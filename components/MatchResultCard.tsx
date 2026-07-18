@@ -38,7 +38,17 @@ export const MatchResultCard = ({ match, teams, tournament, onEdit }: { match: M
 
     // Formatting date
     const dateOpts: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' };
-    const dateFormatted = match.scheduledTime ? new Date(match.scheduledTime).toLocaleString('en-US', dateOpts) : '';
+    let dateFormatted = '';
+    if (match.scheduledTime) {
+        try {
+            const date = new Date(match.scheduledTime);
+            if (!isNaN(date.getTime())) {
+                dateFormatted = date.toLocaleString('en-US', dateOpts);
+            }
+        } catch (e) {
+            // ignore
+        }
+    }
 
     return (
         <div className="bg-[#1A1A1A] rounded-3xl p-6 border border-white/5 shadow-2xl relative w-full overflow-hidden">

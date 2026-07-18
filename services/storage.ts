@@ -944,8 +944,6 @@ export const subscribeToTournament = (id: string, cb: (data: Tournament | null) 
                 finalData.sponsors = sData;
                 if (mData && mData.length > 0) {
                     finalData.matches = mData;
-                    // Auto-heal group standings in the background if they contain incorrect stats/knockout games
-                    checkAndHealTournamentStats(tData, mData);
                 }
                 cb(finalData);
             } else {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { subscribeToTournaments, subscribeToStandings, checkAndHealTournamentStats } from '../services/storage';
+import { subscribeToTournaments, subscribeToStandings } from '../services/storage';
 import { useLiveMatch } from '../hooks/useLiveMatch';
 import { useTournamentDoc } from '../hooks/useTournamentDoc';
 import { useTournamentMatches } from '../hooks/useTournamentMatches';
@@ -14,6 +14,88 @@ import { getEffectiveEvents } from '../services/scoreEngine';
 import { MatchResultCard } from './MatchResultCard';
 import { TeamDetailsOverlay } from './TeamDetailsOverlay';
 import { motion } from 'motion/react';
+
+const getMatchTimestamp = (m: any): number => {
+  const time = m.scheduledTime || m.scheduledAt;
+  if (!time) return 0;
+  if (typeof time === 'string' || typeof time === 'number') {
+    const parsed = new Date(time).getTime();
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  if (time.toDate && typeof time.toDate === 'function') {
+    return time.toDate().getTime();
+  }
+  if (typeof time.seconds === 'number') {
+    return time.seconds * 1000;
+  }
+  return 0;
+};
+
+const formatFullTime = (time: any) => {
+  if (!time) return 'TBA';
+  try {
+    let date: Date;
+    if (typeof time === 'string' || typeof time === 'number') {
+      date = new Date(time);
+    } else if (time.toDate && typeof time.toDate === 'function') {
+      date = time.toDate();
+    } else if (typeof time.seconds === 'number') {
+      date = new Date(time.seconds * 1000);
+    } else if (time instanceof Date) {
+      date = time;
+    } else {
+      return 'TBA';
+    }
+    if (isNaN(date.getTime())) return 'TBA';
+    return date.toLocaleString([], { year: '2-digit', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  } catch (e) {
+    return 'TBA';
+  }
+};
+
+const formatTimeOnly = (time: any) => {
+  if (!time) return 'TBA';
+  try {
+    let date: Date;
+    if (typeof time === 'string' || typeof time === 'number') {
+      date = new Date(time);
+    } else if (time.toDate && typeof time.toDate === 'function') {
+      date = time.toDate();
+    } else if (typeof time.seconds === 'number') {
+      date = new Date(time.seconds * 1000);
+    } else if (time instanceof Date) {
+      date = time;
+    } else {
+      return 'TBA';
+    }
+    if (isNaN(date.getTime())) return 'TBA';
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch (e) {
+    return 'TBA';
+  }
+};
+
+const formatFullDateOnly = (time: any) => {
+  if (!time) return 'Completed';
+  try {
+    let date: Date;
+    if (typeof time === 'string' || typeof time === 'number') {
+      date = new Date(time);
+    } else if (time.toDate && typeof time.toDate === 'function') {
+      date = time.toDate();
+    } else if (typeof time.seconds === 'number') {
+      date = new Date(time.seconds * 1000);
+    } else if (time instanceof Date) {
+      date = time;
+    } else {
+      return 'Completed';
+    }
+    if (isNaN(date.getTime())) return 'Completed';
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  } catch (e) {
+    return 'Completed';
+  }
+};
 
 export const LiveScoreboard: React.FC<{ initialTournamentId?: string, initialCategoryId?: string }> = ({ initialTournamentId, initialCategoryId }) => {
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
@@ -73,11 +155,7 @@ export const LiveScoreboard: React.FC<{ initialTournamentId?: string, initialCat
     return () => unsubscribe();
   }, []);
 
-  useEffect(() => {
-    if (activeTournament && tournamentMatches && tournamentMatches.length > 0) {
-        checkAndHealTournamentStats(activeTournament, tournamentMatches);
-    }
-  }, [activeTournament, tournamentMatches]);
+
 
   useEffect(() => {
     if (activeTournament) {
@@ -123,11 +201,11 @@ export const LiveScoreboard: React.FC<{ initialTournamentId?: string, initialCat
   const liveMatches = matchesToDisplay.filter((m: any) => m.status === MatchStatus.IN_PROGRESS);
   const completedMatches = matchesToDisplay
     .filter((m: any) => m.status === MatchStatus.COMPLETED)
-    .sort((a: any, b: any) => new Date(b.scheduledTime || b.scheduledAt?.toDate?.() || 0).getTime() - new Date(a.scheduledTime || a.scheduledAt?.toDate?.() || 0).getTime());
+    .sort((a: any, b: any) => getMatchTimestamp(b) - getMatchTimestamp(a));
   
   const upcomingMatches = matchesToDisplay
     .filter((m: any) => m.status === MatchStatus.SCHEDULED)
-    .sort((a: any, b: any) => new Date(a.scheduledTime || a.scheduledAt?.toDate?.() || 0).getTime() - new Date(b.scheduledTime || b.scheduledAt?.toDate?.() || 0).getTime());
+    .sort((a: any, b: any) => getMatchTimestamp(a) - getMatchTimestamp(b));
 
   const latestFinished = completedMatches.length > 0 ? completedMatches[0] : null;
 
@@ -662,7 +740,23 @@ const LiveCard = ({ match: initialMatch, teams, sponsors, tournament }: any) => 
         setLastHistoryLength(effectiveHistory.length);
     }, [match.score, effectiveHistory.length]);
 
-    const activeScore = displayScore || match.score;
+    const defaultScore = {
+        p1Points: "0",
+        p2Points: "0",
+        p1Games: 0,
+        p2Games: 0,
+        p1Sets: 0,
+        p2Sets: 0,
+        p1SetScores: [] as number[],
+        p2SetScores: [] as number[],
+        currentSet: 1,
+        isTiebreak: false,
+        history: [] as string[],
+        server: null,
+        goldenPoint: false,
+        _isSuperTiebreak: false,
+    };
+    const activeScore = displayScore || match.score || defaultScore;
 
     // Score Update Animation
     const [scoreFlash, setScoreFlash] = useState(false);
@@ -1327,7 +1421,7 @@ const ScheduleRow = ({ match, teams }: any) => {
             <div className="flex items-center gap-6">
                 <div className="h-12 w-12 rounded-xl bg-black/20 flex flex-col items-center justify-center border border-white/5">
                     <span className="text-[10px] text-content-muted font-black uppercase">Start</span>
-                    <span className="text-white font-black text-sm">{new Date(match.scheduledTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                    <span className="text-white font-black text-sm">{formatTimeOnly(match.scheduledTime)}</span>
                 </div>
                 <div>
                     <div className="text-accent-info text-[10px] font-black uppercase mb-1 tracking-wider">{match.roundName}</div>
@@ -1629,7 +1723,23 @@ const BroadcastMatchCard = ({ match: initialMatch, teams, compact, categories, t
         setLastHistoryLength(effectiveHistory.length);
     }, [match.score, effectiveHistory.length]);
 
-    const activeScore = displayScore || match.score;
+    const defaultScore = {
+        p1Points: "0",
+        p2Points: "0",
+        p1Games: 0,
+        p2Games: 0,
+        p1Sets: 0,
+        p2Sets: 0,
+        p1SetScores: [] as number[],
+        p2SetScores: [] as number[],
+        currentSet: 1,
+        isTiebreak: false,
+        history: [] as string[],
+        server: null,
+        goldenPoint: false,
+        _isSuperTiebreak: false,
+    };
+    const activeScore = displayScore || match.score || defaultScore;
 
     const isT1Serving = activeScore?.server === 'p1' || activeScore?.server === 'p2';
     const isT2Serving = activeScore?.server === 'p3' || activeScore?.server === 'p4';
@@ -1876,7 +1986,7 @@ const SpectatorResults = ({ matches, teams, tournament }: { matches: Match[]; te
     // Sort group rounds ascending by Group name, and sort matches inside them chronologically ascending (earliest first)
     const groupRounds = Object.entries(groupMatchesByGroup)
         .sort((a, b) => a[0].localeCompare(b[0]))
-        .map(([key, sectionMatches]) => [key, [...sectionMatches].sort((ma, mb) => new Date(ma.scheduledTime || '').getTime() - new Date(mb.scheduledTime || '').getTime())] as const);
+        .map(([key, sectionMatches]) => [key, [...sectionMatches].sort((ma, mb) => getMatchTimestamp(ma) - getMatchTimestamp(mb))] as const);
 
     const sortMatchesAscending = (matchesList: Match[]) => {
         return [...matchesList].sort((a, b) => {
@@ -1891,16 +2001,16 @@ const SpectatorResults = ({ matches, teams, tournament }: { matches: Match[]; te
                 if (groupCompare !== 0) return groupCompare;
                 
                 // Same group: sort by scheduled time ascending
-                const timeA = new Date(a.scheduledTime || 0).getTime();
-                const timeB = new Date(b.scheduledTime || 0).getTime();
+                const timeA = getMatchTimestamp(a);
+                const timeB = getMatchTimestamp(b);
                 return timeA - timeB;
             } else if (!isGroupA && !isGroupB) {
                 // Knockout stage matches: Sort by round number ascending (Round 1, Round 2...)
                 if (a.round !== b.round) {
                     return (a.round || 0) - (b.round || 0);
                 }
-                const timeA = new Date(a.scheduledTime || 0).getTime();
-                const timeB = new Date(b.scheduledTime || 0).getTime();
+                const timeA = getMatchTimestamp(a);
+                const timeB = getMatchTimestamp(b);
                 return timeA - timeB;
             }
             
@@ -2033,10 +2143,10 @@ const SpectatorResults = ({ matches, teams, tournament }: { matches: Match[]; te
                                             </td>
                                             <td className="px-6 py-4 text-right">
                                                 <div className="text-gray-400 text-xs font-medium">
-                                                    {m.scheduledTime ? new Date(m.scheduledTime).toLocaleDateString([], { month: 'short', day: 'numeric' }) : 'Completed'}
+                                                    {formatFullDateOnly(m.scheduledTime)}
                                                 </div>
                                                 <div className="text-[9px] text-content-muted mt-0.5">
-                                                    {m.scheduledTime ? new Date(m.scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                                                    {m.scheduledTime ? formatTimeOnly(m.scheduledTime) : ''}
                                                 </div>
                                             </td>
                                         </tr>
@@ -2154,7 +2264,7 @@ const SpectatorResults = ({ matches, teams, tournament }: { matches: Match[]; te
                                 <h4 className="text-sm font-black text-white uppercase tracking-widest">Knockout Stage</h4>
                             </div>
                             {playoffRounds.map(([roundName, matches], idx) => (
-                                <ExpandableSection key={roundName} title={roundName} sectionMatches={[...matches].sort((a, b) => new Date(a.scheduledTime || '').getTime() - new Date(b.scheduledTime || '').getTime())} defaultExpanded={idx === 0} />
+                                <ExpandableSection key={roundName} title={roundName} sectionMatches={[...matches].sort((a, b) => getMatchTimestamp(a) - getMatchTimestamp(b))} defaultExpanded={idx === 0} />
                             ))}
                         </div>
                     )}
@@ -2206,7 +2316,7 @@ const SpectatorSchedule = ({ matches, teams, onSelectTab }: { matches: Match[]; 
         return [getFirstName(t?.player1?.name), getFirstName(t?.player2?.name)].filter(Boolean).join(' & ') || t?.name || fallbackName || 'TBD';
     };
 
-    const sortedAll = [...upcomingMatches].sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
+    const sortedAll = [...upcomingMatches].sort((a, b) => getMatchTimestamp(a) - getMatchTimestamp(b));
     const hasGroups = sortedAll.some(m => !!m.group || (m.roundName && m.roundName.startsWith('Group ')));
 
     const renderCard = (m: Match) => {
@@ -2242,7 +2352,7 @@ const SpectatorSchedule = ({ matches, teams, onSelectTab }: { matches: Match[]; 
                 </div>
                 <div className="flex items-center justify-between w-full md:w-auto gap-4 text-sm text-content-secondary">
                     <div className="flex items-center gap-2 flex-1 md:flex-initial justify-center md:justify-start font-mono">
-                        <Calendar size={14}/> {new Date(m.scheduledTime).toLocaleString([], { year: '2-digit', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        <Calendar size={14}/> {formatFullTime(m.scheduledTime)}
                     </div>
                     <Badge variant="neutral" className="font-mono">{m.court}</Badge>
                     {isLive && (
