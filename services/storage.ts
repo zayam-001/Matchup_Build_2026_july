@@ -2166,6 +2166,10 @@ export const generateSchedule = async (tId: string, knockoutConfig?: any[], auto
             }
 
             matchesToDelete.forEach(d => {
+                const data = d.data();
+                const isFinished = data.status === MatchStatus.COMPLETED || String(data.status).toUpperCase() === 'FINISHED';
+                if (isFinished) return; // PROTECT COMPLETED MATCHES
+
                 batch.delete(d.ref)
                 const globalMatchRef = doc(db, "matches", d.id);
                 batch.delete(globalMatchRef);
@@ -2200,7 +2204,11 @@ export const generateSchedule = async (tId: string, knockoutConfig?: any[], auto
                  teamsForStandings = teamsForStandings.filter(t => t.categoryId === autoConfig.categoryId);
             }
             
-            const initialStandings = calculateStats(teamsForStandings, [], tData.format);
+            const preservedMatches = existing.docs
+                .map(d => ({ id: d.id, ...d.data() } as Match))
+                .filter(m => (m.status === MatchStatus.COMPLETED || String(m.status).toUpperCase() === 'FINISHED') && (!autoConfig?.categoryId || m.categoryId === autoConfig.categoryId));
+
+            const initialStandings = calculateStats(teamsForStandings, preservedMatches, tData.format);
             initialStandings.forEach(team => {
                 const sRef = doc(standingsCol, team.id);
                 batch.set(sRef, cleanData(team));
@@ -2585,11 +2593,16 @@ export const editTeamInTournament = async (tId: string, teamId: string, name: st
             const isAmericanoMode = t.format === 'AMERICANO' || t.format === 'MEXICANO';
             const updatedTeams = t.teams.map(team => {
                 if (team.id === teamId) {
-                    // Safely create a deep clone to avoid mutating Firestore cached objects
                     const updated = JSON.parse(JSON.stringify(team));
                     updated.name = name;
-                    if (updated.player1) updated.player1.name = player1Name;
-                    if (updated.player2 && !isAmericanoMode && player2Name !== undefined) updated.player2.name = player2Name;
+                    
+                    if (!updated.player1) updated.player1 = { id: genId(), name: '' };
+                    updated.player1.name = player1Name;
+                    
+                    if (!isAmericanoMode) {
+                        if (!updated.player2) updated.player2 = { id: genId(), name: '' };
+                        if (player2Name !== undefined) updated.player2.name = player2Name;
+                    }
                     return updated;
                 }
                 return team;
@@ -2673,8 +2686,33 @@ export const getCourtsByVenueIds = async (venueIds: string[]) => {
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
-export const startMatch = async (tId: any, mId: any, ...args: any[]) => {
-    if (db) await updateDoc(doc(db, "tournaments", tId, "matches", mId), { status: "LIVE" });
+export const startMatch = async (tId: any, mId: any, courtId?: string | null, courtName?: string | null, extraData?: any, conflictAcknowledged?: boolean | null) => {
+    const updates = cleanData({
+        status: MatchStatus.IN_PROGRESS,
+        courtId: courtId || undefined,
+        actualCourtId: courtId || undefined,
+        court: courtName || undefined,
+        conflictAcknowledged: conflictAcknowledged || undefined,
+        scheduledStartTime: new Date().toISOString(),
+        ...extraData
+    });
+
+    if (db) {
+        try {
+            const batch = writeBatch(db);
+            const mRef = doc(db, "tournaments", tId, "matches", mId);
+            const globalMatchRef = doc(db, "matches", mId);
+            
+            batch.update(mRef, updates);
+            batch.update(globalMatchRef, updates);
+            
+            await batch.commit();
+        } catch (e) {
+            console.error("Batch update failed for startMatch, falling back to individual updates", e);
+            await updateDoc(doc(db, "tournaments", tId, "matches", mId), updates);
+            await updateDoc(doc(db, "matches", mId), updates).catch(() => {});
+        }
+    }
 };
 export const addRefereeTag = async (tId: any, mId: any, tag: any) => {
     console.log('tag', tag);

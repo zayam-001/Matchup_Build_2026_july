@@ -418,12 +418,13 @@ const RefereeCategoryView = ({
                 const p1Sets = actualSets.p1;
                 const p2Sets = actualSets.p2;
                 const isCompleted = (m.status === MatchStatus.COMPLETED || String(m.status).toUpperCase() === 'FINISHED') || String(m.status).toUpperCase() === 'COMPLETED' || !!m.winnerTeamId;
-                const hasScore = p1Sets > 0 || p2Sets > 0 || isCompleted || m.status === MatchStatus.IN_PROGRESS;
+                const hasScore = p1Sets > 0 || p2Sets > 0 || isCompleted || m.status === MatchStatus.IN_PROGRESS || String(m.status).toUpperCase() === 'LIVE';
+                const isScheduled = m.status === MatchStatus.SCHEDULED || !m.status || String(m.status).toUpperCase() === 'SCHEDULED';
 
                 return (
                     <Card key={m.id} variant="panel" onClick={() => {
                         if (isAmericanoFormat) {
-                            if (m.status === MatchStatus.SCHEDULED) {
+                            if (isScheduled) {
                                 setStartingMatch({ match: m, team1Name: m.team1Name || 'Team 1', team2Name: m.team2Name || 'Team 2' });
                             } else {
                                 setSelectedMatch(m);
@@ -439,7 +440,7 @@ const RefereeCategoryView = ({
                                 alert("Cannot start match: One or both teams are missing from the roster.");
                                 return;
                             }
-                            if (m.status === MatchStatus.SCHEDULED) {
+                            if (isScheduled) {
                                 setStartingMatch({ match: m, team1Name: t1Data.name, team2Name: t2Data.name });
                             } else {
                                 setSelectedMatch(m);
@@ -469,7 +470,7 @@ const RefereeCategoryView = ({
                                         <span key={i} className="text-content-muted">{s}</span>
                                     ))}
                                     <span className="text-white bg-white/10 px-1.5 py-0.5 rounded text-sm mx-1">{p1Sets}</span>
-                                    {(m.status === MatchStatus.IN_PROGRESS || (isCompleted && !m.score?.p1SetScores?.length)) && (
+                                    {(m.status === MatchStatus.IN_PROGRESS || String(m.status).toUpperCase() === 'LIVE' || (isCompleted && !m.score?.p1SetScores?.length)) && (
                                         <span className={m.winnerTeamId === m.team1Id ? 'text-accent-live' : 'text-white'}>{m.score?.p1Games || 0}</span>
                                     )}
                                 </div>
@@ -490,7 +491,7 @@ const RefereeCategoryView = ({
                                         <span key={i} className="text-content-muted">{s}</span>
                                     ))}
                                     <span className="text-white bg-white/10 px-1.5 py-0.5 rounded text-sm mx-1">{p2Sets}</span>
-                                    {(m.status === MatchStatus.IN_PROGRESS || (isCompleted && !m.score?.p2SetScores?.length)) && (
+                                    {(m.status === MatchStatus.IN_PROGRESS || String(m.status).toUpperCase() === 'LIVE' || (isCompleted && !m.score?.p2SetScores?.length)) && (
                                         <span className={m.winnerTeamId === m.team2Id ? 'text-accent-live' : 'text-white'}>{m.score?.p2Games || 0}</span>
                                     )}
                                 </div>
@@ -498,7 +499,7 @@ const RefereeCategoryView = ({
                         </div>
                         <div className="flex justify-between items-center mt-2 border-t border-white/5 pt-2">
                             <div className="text-sm text-content-muted">{m.roundName}</div>
-                            {m.status === MatchStatus.IN_PROGRESS && !isCompleted && <div className="animate-pulse w-2 h-2 bg-accent-live rounded-full"></div>}
+                            {(m.status === MatchStatus.IN_PROGRESS || String(m.status).toUpperCase() === 'LIVE') && !isCompleted && <div className="animate-pulse w-2 h-2 bg-accent-live rounded-full"></div>}
                             {isCompleted && <div className="text-xs bg-surface-elevated px-2 py-1 rounded text-content-secondary">Complete</div>}
                         </div>
                     </Card>
@@ -614,8 +615,13 @@ const ScoringControl = ({ match, teams, tournamentId, isAmericano, onUpdate, onB
     
     // We already have MatchScoringSystem do all the UI
     const handleScoreUpdate = (newScore: any) => {
-        if ((match.status === MatchStatus.COMPLETED || String(match.status).toUpperCase() === 'FINISHED')) return;
-        let newStatus = match.status === MatchStatus.SCHEDULED ? MatchStatus.IN_PROGRESS : match.status;
+        if (match.status === MatchStatus.COMPLETED || String(match.status).toUpperCase() === 'FINISHED' || String(match.status).toUpperCase() === 'COMPLETED') return;
+        
+        let newStatus = match.status;
+        if (match.status === MatchStatus.SCHEDULED || String(match.status).toUpperCase() === 'SCHEDULED' || !match.status) {
+            newStatus = MatchStatus.IN_PROGRESS;
+        }
+        
         onUpdate({ ...match, score: newScore, status: newStatus });
     };
 
@@ -848,6 +854,12 @@ const ScoringControl = ({ match, teams, tournamentId, isAmericano, onUpdate, onB
 
     return (
         <div className="fixed inset-0 top-16 md:top-24 z-50 flex flex-col bg-bg-dark w-full overflow-y-auto md:overflow-hidden">
+            <div className="bg-[#111] border-b border-white/5 py-1.5 px-4 flex items-center justify-center gap-2 shrink-0">
+                <MapPin size={12} className="text-brand" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-brand">Court: {match.court || 'TBD'}</span>
+                <span className="w-1 h-1 rounded-full bg-white/20 mx-1"></span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-content-secondary">{match.roundName || 'Match'}</span>
+            </div>
             <div className="flex-1 w-full relative min-h-0 md:h-full">
                 <MatchScoringSystem 
                     score={match.score}

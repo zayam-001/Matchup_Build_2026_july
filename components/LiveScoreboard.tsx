@@ -173,7 +173,10 @@ export const LiveScoreboard: React.FC<{ initialTournamentId?: string, initialCat
         const matchesForCat = activeTournament.isMultiCategory && selectedCategoryId
             ? tournamentMatches.filter((m: any) => m.categoryId === selectedCategoryId)
             : tournamentMatches || [];
-        const liveMatchCount = matchesForCat.filter((m: any) => m.status === MatchStatus.IN_PROGRESS && !m.winnerTeamId).length;
+        const liveMatchCount = matchesForCat.filter((m: any) => 
+            (m.status === MatchStatus.IN_PROGRESS || String(m.status).toUpperCase() === 'LIVE') && 
+            !m.winnerTeamId
+        ).length;
         
         if (selectedCategoryId !== prevCategory) {
             setPrevCategory(selectedCategoryId);
@@ -198,13 +201,16 @@ export const LiveScoreboard: React.FC<{ initialTournamentId?: string, initialCat
         ? (activeTournament.teams || []).filter((t: any) => t.categoryId === selectedCategoryId)
         : (activeTournament.teams || []);
 
-  const liveMatches = matchesToDisplay.filter((m: any) => m.status === MatchStatus.IN_PROGRESS && !m.winnerTeamId);
+  const liveMatches = matchesToDisplay.filter((m: any) => 
+    (m.status === MatchStatus.IN_PROGRESS || String(m.status).toUpperCase() === 'LIVE') && 
+    !m.winnerTeamId
+  );
   const completedMatches = matchesToDisplay
     .filter((m: any) => (m.status === MatchStatus.COMPLETED || String(m.status).toUpperCase() === 'FINISHED') || m.winnerTeamId)
     .sort((a: any, b: any) => getMatchTimestamp(b) - getMatchTimestamp(a));
   
   const upcomingMatches = matchesToDisplay
-    .filter((m: any) => m.status === MatchStatus.SCHEDULED)
+    .filter((m: any) => m.status === MatchStatus.SCHEDULED || !m.status || String(m.status).toUpperCase() === 'SCHEDULED')
     .sort((a: any, b: any) => getMatchTimestamp(a) - getMatchTimestamp(b));
 
   const latestFinished = completedMatches.length > 0 ? completedMatches[0] : null;
@@ -302,7 +308,11 @@ export const LiveScoreboard: React.FC<{ initialTournamentId?: string, initialCat
             <div className="max-w-7xl mx-auto px-4 mb-6">
                 <div className="flex flex-wrap items-center justify-start gap-2">
                     {activeTournament.categories.map((cat: any) => {
-                        const hasLiveMatch = tournamentMatches?.some((m: any) => m.categoryId === cat.id && m.status === MatchStatus.IN_PROGRESS && !m.winnerTeamId);
+                        const hasLiveMatch = tournamentMatches?.some((m: any) => 
+                            m.categoryId === cat.id && 
+                            (m.status === MatchStatus.IN_PROGRESS || String(m.status).toUpperCase() === 'LIVE') && 
+                            !m.winnerTeamId
+                        );
                         return (
                         <button
                             key={cat.id}
@@ -1448,7 +1458,10 @@ const ScheduleRow = ({ match, teams }: any) => {
 const BroadcastMode = ({ tournament, onClose }: { tournament: Tournament, onClose: () => void }) => {
     const { matches: globalMatches } = useTournamentMatches(tournament.id);
     const [selectedMatchId, setSelectedMatchId] = useState<string | 'ALL'>('ALL');
-    const liveMatches = globalMatches.filter(m => m.status === MatchStatus.IN_PROGRESS && !m.winnerTeamId);
+    const liveMatches = globalMatches.filter(m => 
+        (m.status === MatchStatus.IN_PROGRESS || String(m.status).toUpperCase() === 'LIVE') && 
+        !m.winnerTeamId
+    );
     
     // Realtime Watchers Simulation
     const baseWatchers = Math.max(800, (liveMatches.length * 400) + Math.floor(Math.random() * 500));
@@ -2334,7 +2347,7 @@ const SpectatorSchedule = ({ matches, teams, onSelectTab }: { matches: Match[]; 
     const renderCard = (m: Match) => {
         const t1 = getTeamName(m.team1Id, m.team1Name);
         const t2 = getTeamName(m.team2Id, m.team2Name);
-        const isLive = (m.status === MatchStatus.IN_PROGRESS || String(m.status).toUpperCase() === 'IN_PROGRESS') && !m.winnerTeamId;
+        const isLive = (m.status === MatchStatus.IN_PROGRESS || String(m.status).toUpperCase() === 'IN_PROGRESS' || String(m.status).toUpperCase() === 'LIVE') && !m.winnerTeamId;
 
         return (
             <Card 
