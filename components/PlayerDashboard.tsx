@@ -323,8 +323,8 @@ export const PlayerDashboard: React.FC<{ onLogout: () => void, onNavigate: (tab:
         )
     );
 
-    const activeTournaments = myTournaments.filter(t => t.status !== 'COMPLETED');
-    const pastTournaments = myTournaments.filter(t => t.status === 'COMPLETED');
+    const activeTournaments = myTournaments.filter(t => (t.status !== 'COMPLETED' && String(t.status).toUpperCase() !== 'FINISHED'));
+    const pastTournaments = myTournaments.filter(t => (t.status === 'COMPLETED' || String(t.status).toUpperCase() === 'FINISHED'));
 
     // Compute recent partners
     const recentPartners = pastTournaments.flatMap(t => {
@@ -341,7 +341,7 @@ export const PlayerDashboard: React.FC<{ onLogout: () => void, onNavigate: (tab:
         const myTeam = t.teams?.find(team => team?.player1?.email === player?.email || team?.player2?.email === player?.email);
         if (!myTeam || !t.matches) return [];
         return t.matches
-            .filter(m => (m.team1Id === myTeam.id || m.team2Id === myTeam.id) && m.status !== 'COMPLETED')
+            .filter(m => (m.team1Id === myTeam.id || m.team2Id === myTeam.id) && (m.status !== 'COMPLETED' && String(m.status).toUpperCase() !== 'FINISHED'))
             .map(m => ({ ...m, tournamentName: t.name, myTeamId: myTeam.id, allTeams: t.teams }));
     });
 
@@ -350,7 +350,7 @@ export const PlayerDashboard: React.FC<{ onLogout: () => void, onNavigate: (tab:
         const myTeam = t.teams?.find(team => team?.player1?.email === player?.email || team?.player2?.email === player?.email);
         if (!myTeam || !t.matches) return [];
         return t.matches
-            .filter(m => (m.team1Id === myTeam.id || m.team2Id === myTeam.id) && m.status === 'COMPLETED')
+            .filter(m => (m.team1Id === myTeam.id || m.team2Id === myTeam.id) && (m.status === 'COMPLETED' || String(m.status).toUpperCase() === 'FINISHED'))
             .map(m => ({ ...m, tournamentId: t.id, tournamentName: t.name, myTeamId: myTeam.id, allTeams: t.teams }));
     });
 
@@ -400,7 +400,7 @@ export const PlayerDashboard: React.FC<{ onLogout: () => void, onNavigate: (tab:
             });
             
             (session.matches || []).forEach((m: any) => {
-                if (m.status === 'COMPLETED') {
+                if ((m.status === 'COMPLETED' || String(m.status).toUpperCase() === 'FINISHED')) {
                     const isTeam1 = m.team1Players?.includes(playerIndex) || (m.player1 && playerName && m.player1.includes(playerName)) || (m.team1Name && playerName && m.team1Name.includes(playerName));
                     const isTeam2 = m.team2Players?.includes(playerIndex) || (m.player2 && playerName && m.player2.includes(playerName)) || (m.team2Name && playerName && m.team2Name.includes(playerName));
                     
@@ -493,7 +493,7 @@ export const PlayerDashboard: React.FC<{ onLogout: () => void, onNavigate: (tab:
             });
             
             (session.matches || []).forEach((m: any) => {
-                if (m.status === 'COMPLETED' && (m.timestamp || session.createdAt)) {
+                if ((m.status === 'COMPLETED' || String(m.status).toUpperCase() === 'FINISHED') && (m.timestamp || session.createdAt)) {
                     const d = new Date(m.timestamp || session.createdAt);
                     const key = `${months[d.getMonth()]} ${d.getFullYear()}`;
                     
@@ -520,7 +520,7 @@ export const PlayerDashboard: React.FC<{ onLogout: () => void, onNavigate: (tab:
     }, [pastMatches, quickplaySessions, player]);
 
     const suggestedTournaments = tournaments.filter(t => 
-        t.status !== 'COMPLETED' && 
+        (t.status !== 'COMPLETED' && String(t.status).toUpperCase() !== 'FINISHED') && 
         !(t.teams || []).some(team => team?.player1?.email === player?.email || team?.player2?.email === player?.email)
     ).slice(0, 3); // Show up to 3 suggestions
 

@@ -298,7 +298,7 @@ export const QuickPlaySession: React.FC = () => {
       });
 
       session.matches.forEach((m: any) => {
-        if (m.status === 'COMPLETED') {
+        if ((m.status === 'COMPLETED' || String(m.status).toUpperCase() === 'FINISHED')) {
           const t1Ids = m.team1Players ? m.team1Players.map((index: number) => session.playerIds[index]) : [];
           const t2Ids = m.team2Players ? m.team2Players.map((index: number) => session.playerIds[index]) : [];
           
@@ -438,7 +438,7 @@ export const QuickPlaySession: React.FC = () => {
                       matchId={match.matchId}
                       team1Name={match.player1}
                       team2Name={match.player2}
-                      isMatchEnded={match.status === MatchStatus.COMPLETED || session.status === 'completed'}
+                      isMatchEnded={(match.status === MatchStatus.COMPLETED || String(match.status).toUpperCase() === 'FINISHED') || session.status === 'completed'}
                       onUpdateScore={async (newScore) => {
                           const newMatches = session.matches.map((m: any) => {
                               if (m.matchId === match.matchId) {
@@ -472,7 +472,7 @@ export const QuickPlaySession: React.FC = () => {
                           }
                       }}
                   />
-                  {(match.status === MatchStatus.COMPLETED || session.status === 'completed') && (
+                  {((match.status === MatchStatus.COMPLETED || String(match.status).toUpperCase() === 'FINISHED') || session.status === 'completed') && (
                       <div className="mt-4 pt-4 border-t border-white/5">
                           <button 
                               onClick={() => setSelectedWinnerBannerMatch(match)}

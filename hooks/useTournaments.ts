@@ -42,12 +42,12 @@ export const useTournaments = () => {
       const now = new Date();
       // Filter upcoming (date > now) and sort by closest to now
       const upcoming = allTournaments
-        .filter(t => new Date(t.date) > now && t.status !== 'COMPLETED')
+        .filter(t => new Date(t.date) > now && (t.status !== 'COMPLETED' && String(t.status).toUpperCase() !== 'FINISHED'))
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
       // If no upcoming found via date, just grab active/draft ones
       if (upcoming.length === 0) {
-        const active = allTournaments.filter(t => t.status !== 'COMPLETED');
+        const active = allTournaments.filter(t => (t.status !== 'COMPLETED' && String(t.status).toUpperCase() !== 'FINISHED'));
         setTournaments(active.slice(0, 5));
       } else {
         setTournaments(upcoming.slice(0, 5));

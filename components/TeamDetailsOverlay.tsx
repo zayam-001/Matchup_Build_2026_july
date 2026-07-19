@@ -13,8 +13,8 @@ export const TeamDetailsOverlay = ({ team, matches, teams, tournament, onClose, 
     const teamId = team.id;
     const teamMatches = matches.filter(m => m.team1Id === teamId || m.team2Id === teamId);
     
-    const completedMatches = teamMatches.filter(m => m.status === 'COMPLETED');
-    const upcomingMatches = teamMatches.filter(m => m.status !== 'COMPLETED');
+    const completedMatches = teamMatches.filter(m => (m.status === 'COMPLETED' || String(m.status).toUpperCase() === 'FINISHED'));
+    const upcomingMatches = teamMatches.filter(m => (m.status !== 'COMPLETED' && String(m.status).toUpperCase() !== 'FINISHED'));
 
     const wins = team.wins !== undefined ? team.wins : completedMatches.filter(m => m.winnerTeamId === teamId).length;
     const losses = team.losses !== undefined ? team.losses : (completedMatches.length - wins);
@@ -168,8 +168,8 @@ export const TeamDetailsOverlay = ({ team, matches, teams, tournament, onClose, 
                                                         {new Date(m.scheduledTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric'})}
                                                     </span>
                                                 )}
-                                                <span className={`text-[10px] font-black uppercase tracking-widest ${m.status === 'COMPLETED' ? (m.winnerTeamId === teamId ? 'text-[#b4fc57]' : 'text-[#E65C31]') : 'text-[#4D78FF]'}`}>
-                                                    {m.status === 'COMPLETED' ? (m.winnerTeamId === teamId ? 'WON' : 'LOST') : m.status}
+                                                <span className={`text-[10px] font-black uppercase tracking-widest ${(m.status === 'COMPLETED' || String(m.status).toUpperCase() === 'FINISHED') ? (m.winnerTeamId === teamId ? 'text-[#b4fc57]' : 'text-[#E65C31]') : 'text-[#4D78FF]'}`}>
+                                                    {(m.status === 'COMPLETED' || String(m.status).toUpperCase() === 'FINISHED') ? (m.winnerTeamId === teamId ? 'WON' : 'LOST') : m.status}
                                                 </span>
                                             </div>
                                         </div>

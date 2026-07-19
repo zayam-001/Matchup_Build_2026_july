@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ScoreState, Team } from '../types';
 import { RotateCcw, ChevronLeft, Crown, AlertCircle, X, Plus, Target, Trophy, Clock, Lock, Loader2, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { recordAtomicPoint } from '../services/refereeActions';
+import { recordAtomicPoint, undoLastAtomicPoint } from '../services/refereeActions';
 import { completeMatchAndAdvance } from '../services/matchCompletion';
 
 // Similar to new LiveScoringPage's UI/UX, built to replace MatchScoringSystem UI
@@ -59,7 +59,7 @@ export interface MatchScoringSystemProps {
   isMatchEnded?: boolean;
   onUpdateScore: (newScore: ScoreState) => void;
   onRequestChange?: (req: any) => void;
-  onEndMatch?: (winner?: 1 | 2, history?: PointHistory[], extraInfo?: any) => void;
+  onEndMatch?: (winner?: 1 | 2, history?: PointHistory[], extraInfo?: any) => void | Promise<void>;
   onTriggerBroadcast?: (type: string, message: string, subMessage?: string) => void;
   onBack?: () => void;
   isAmericano?: boolean;
@@ -109,6 +109,7 @@ export const MatchScoringSystem: React.FC<MatchScoringSystemProps> = ({
   const [activePlayerForTag, setActivePlayerForTag] = useState<PlayerId | null>(null);
   const [taggingMode, setTaggingMode] = useState<'winner' | 'error' | null>(null);
   const [showEndMatchModal, setShowEndMatchModal] = useState(false);
+  const [isSubmittingEndMatch, setIsSubmittingEndMatch] = useState(false);
   
   // Workflow Phases
   const [workflowPhase, setWorkflowPhase] = useState<WorkflowPhase>('SCORING');
@@ -224,7 +225,10 @@ export const MatchScoringSystem: React.FC<MatchScoringSystemProps> = ({
       ...({ americanoTargetPoints, americanoMode } as any)
     };
 
-    onUpdateScore(nextScoreState);
+    // Do not dispatch intermediate score updates if we are in the process of submitting the final end match
+    if (!isSubmittingEndMatch && !isMatchEnded) {
+        onUpdateScore(nextScoreState);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchState, isAmericano, americanoTargetPoints, americanoMode]); // intentionally omitting score and onUpdateScore
 
@@ -278,6 +282,9 @@ export const MatchScoringSystem: React.FC<MatchScoringSystemProps> = ({
     if (lastHistory.stateBefore && Object.keys(lastHistory.stateBefore).length > 0) {
         setMatchState(lastHistory.stateBefore);
         setHistory(prev => prev.slice(0, -1));
+        
+        // Revert the last atomic point in the database (e.g. player stats)
+        undoLastAtomicPoint(matchId).catch(err => console.error("Failed to undo atomic point:", err));
     } else {
         alert("Cannot undo events from previous sessions.");
     }
@@ -1051,6 +1058,7 @@ export const MatchScoringSystem: React.FC<MatchScoringSystemProps> = ({
                       <button 
                         disabled={isSubmitting}
                         onClick={async () => {
+                          if (isSubmitting) return;
                           if (onEndMatch) {
                             setIsSubmitting(true);
                             try {
@@ -1076,12 +1084,14 @@ export const MatchScoringSystem: React.FC<MatchScoringSystemProps> = ({
                                   finalSetScoresA.push(finalGamesA);
                                   finalSetScoresB.push(finalGamesB);
                               }
-
                               await (onEndMatch as any)(selectedWinnerId, history, {
                                  resolution: resolutionType,
                                  scores: { a: finalSetScoresA, b: finalSetScoresB },
                                  refereeNotes: notes ? [notes] : []
                               });
+                            } catch (err) {
+                               console.error('Failed to submit match end:', err);
+                               alert('Failed to submit match end. Please try again.');
                             } finally {
                               setIsSubmitting(false);
                             }
@@ -1155,8 +1165,9 @@ export const MatchScoringSystem: React.FC<MatchScoringSystemProps> = ({
                     </div>
                     
                     <button 
-                      disabled={!selectedWinnerId}
+                      disabled={!selectedWinnerId || isSubmittingEndMatch}
                       onClick={() => {
+                        if (isSubmittingEndMatch) return;
                         // Apply score logic based on reason
                         let finalState = { ...matchState };
                         
@@ -1212,24 +1223,38 @@ export const MatchScoringSystem: React.FC<MatchScoringSystemProps> = ({
                         }
 
                         setMatchState(finalState);
+                        setIsSubmittingEndMatch(true);
                         
                         // Wait for state to propagate
-                        setTimeout(() => {
+                        setTimeout(async () => {
                            if (onEndMatch) {
-                               onEndMatch(selectedWinnerId as 1 | 2, history, {
-                                   resolution: endMatchReason,
-                                   scores: {
-                                       a: finalState.setScoresA,
-                                       b: finalState.setScoresB
-                                   }
-                               });
+                               try {
+                                   await onEndMatch(selectedWinnerId as 1 | 2, history, {
+                                       resolution: endMatchReason,
+                                       scores: {
+                                           a: finalState.setScoresA,
+                                           b: finalState.setScoresB
+                                       }
+                                   });
+                                   setShowEndMatchModal(false);
+                               } catch (err) {
+                                   console.error('Failed to end match:', err);
+                                   alert('Failed to end match. Please try again.');
+                               }
                            }
-                           setShowEndMatchModal(false);
+                           setIsSubmittingEndMatch(false);
                         }, 100);
                       }}
-                      className="mt-6 w-full py-4 bg-red-500 hover:bg-red-600 text-white font-black uppercase text-sm rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="mt-6 w-full flex items-center justify-center space-x-2 py-4 bg-red-500 hover:bg-red-600 text-white font-black uppercase text-sm rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Confirm End Match
+                      {isSubmittingEndMatch ? (
+                        <>
+                           <Loader2 className="w-5 h-5 animate-spin" />
+                           <span>Ending Match...</span>
+                        </>
+                      ) : (
+                         <span>Confirm End Match</span>
+                      )}
                     </button>
                   </div>
                 )}

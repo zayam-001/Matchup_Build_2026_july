@@ -10,6 +10,8 @@ import { Avatar } from './ui/Avatar';
 import { Logo } from './ui/Logo';
 import { RefereeStartMatchModal } from './RefereeStartMatchModal';
 
+const activeMatchEnds = new Set<string>();
+
 export const RefereeInterface: React.FC<{ initialTournamentId?: string, initialAuthenticated?: boolean, onLogout?: () => void }> = ({ initialTournamentId, initialAuthenticated, onLogout }) => {
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [selectedTournamentId, setSelectedTournamentId] = useState<string | null>(initialTournamentId || null);
@@ -415,7 +417,7 @@ const RefereeCategoryView = ({
                 
                 const p1Sets = actualSets.p1;
                 const p2Sets = actualSets.p2;
-                const isCompleted = m.status === MatchStatus.COMPLETED || String(m.status).toUpperCase() === 'COMPLETED';
+                const isCompleted = (m.status === MatchStatus.COMPLETED || String(m.status).toUpperCase() === 'FINISHED') || String(m.status).toUpperCase() === 'COMPLETED' || !!m.winnerTeamId;
                 const hasScore = p1Sets > 0 || p2Sets > 0 || isCompleted || m.status === MatchStatus.IN_PROGRESS;
 
                 return (
@@ -496,7 +498,7 @@ const RefereeCategoryView = ({
                         </div>
                         <div className="flex justify-between items-center mt-2 border-t border-white/5 pt-2">
                             <div className="text-sm text-content-muted">{m.roundName}</div>
-                            {m.status === MatchStatus.IN_PROGRESS && <div className="animate-pulse w-2 h-2 bg-accent-live rounded-full"></div>}
+                            {m.status === MatchStatus.IN_PROGRESS && !isCompleted && <div className="animate-pulse w-2 h-2 bg-accent-live rounded-full"></div>}
                             {isCompleted && <div className="text-xs bg-surface-elevated px-2 py-1 rounded text-content-secondary">Complete</div>}
                         </div>
                     </Card>
@@ -612,23 +614,30 @@ const ScoringControl = ({ match, teams, tournamentId, isAmericano, onUpdate, onB
     
     // We already have MatchScoringSystem do all the UI
     const handleScoreUpdate = (newScore: any) => {
-        if (match.status === MatchStatus.COMPLETED) return;
+        if ((match.status === MatchStatus.COMPLETED || String(match.status).toUpperCase() === 'FINISHED')) return;
         let newStatus = match.status === MatchStatus.SCHEDULED ? MatchStatus.IN_PROGRESS : match.status;
         onUpdate({ ...match, score: newScore, status: newStatus });
     };
 
     const handleEndMatch = async (winnerIdChoice: 1 | 2, history: any[], extraInfo?: any) => {
-        let winnerId;
-        if (winnerIdChoice === 1) {
-             winnerId = t1?.id || match.team1Id;
-        } else {
-             winnerId = t2?.id || match.team2Id;
+        if (activeMatchEnds.has(match.id)) {
+            console.log('Match end already in progress for this match');
+            return;
         }
+        activeMatchEnds.add(match.id);
+        
+        try {
+            let winnerId;
+            if (winnerIdChoice === 1) {
+                 winnerId = t1?.id || match.team1Id;
+            } else {
+                 winnerId = t2?.id || match.team2Id;
+            }
 
-        const updates: any = { 
-            status: MatchStatus.COMPLETED, 
-            winnerTeamId: winnerId 
-        };
+            const updates: any = { 
+                status: MatchStatus.COMPLETED, 
+                winnerTeamId: winnerId 
+            };
 
         if (extraInfo) {
             if (extraInfo.resolution) updates.resolutionType = extraInfo.resolution;
@@ -818,14 +827,23 @@ const ScoringControl = ({ match, teams, tournamentId, isAmericano, onUpdate, onB
                 const teamAStr = teamAIds.filter(Boolean).join(',');
                 const teamBStr = teamBIds.filter(Boolean).join(',');
                 
-                await processMatchAnalytics(match.id, tournamentId, history, players.filter(p => p && p.id && p.id !== 'undefined'), teamAStr, teamBStr);
-                console.log('Analytics generated successfully!');
+                processMatchAnalytics(match.id, tournamentId, history, players.filter(p => p && p.id && p.id !== 'undefined'), teamAStr, teamBStr)
+                    .then(() => console.log('Analytics generated successfully!'))
+                    .catch(err => console.error('Failed to process match analytics:', err));
             } catch (err) {
-                console.error('Failed to process match analytics:', err);
+                console.error('Failed to prepare match analytics:', err);
             }
         }
 
-        onShowBanner();
+            if (typeof onShowBanner === 'function') {
+                onShowBanner();
+            }
+        } catch (err) {
+            console.error('Match ending failed:', err);
+            throw err; // Re-throw to let the UI know it failed
+        } finally {
+            activeMatchEnds.delete(match.id);
+        }
     };
 
     return (
@@ -842,7 +860,7 @@ const ScoringControl = ({ match, teams, tournamentId, isAmericano, onUpdate, onB
                     team1={t1}
                     team2={t2}
                     refereePin={match.refereePin || '1234'} // Fallback if missing
-                    isMatchEnded={match.status === MatchStatus.COMPLETED}
+                    isMatchEnded={(match.status === MatchStatus.COMPLETED || String(match.status).toUpperCase() === 'FINISHED')}
                     onUpdateScore={handleScoreUpdate}
                     onEndMatch={handleEndMatch}
                     onBack={onBack}
@@ -860,7 +878,7 @@ const ScoringControl = ({ match, teams, tournamentId, isAmericano, onUpdate, onB
                 />
             </div>
 
-            {match.status === MatchStatus.COMPLETED && (
+            {(match.status === MatchStatus.COMPLETED || String(match.status).toUpperCase() === 'FINISHED') && (
                 <div className="absolute inset-0 z-[110] bg-black/90 flex flex-col items-center justify-center p-4">
                     <div className="text-center w-full max-w-sm py-8 bg-surface-panel rounded-3xl border border-brand/50 p-6">
                         <Award size={64} className="mx-auto text-brand mb-4" />

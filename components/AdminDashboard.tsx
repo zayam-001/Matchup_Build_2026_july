@@ -28,56 +28,6 @@ import { db, auth } from '../services/storage';
 import TournamentAnalytics from './TournamentAnalytics';
 import { deleteKnockoutMatchCascade, recalculateMatchResult, getAllRegisteredPlayers, mergePlayerProfiles } from '../services/storage';
 
-export const RefreshMatchConfirmModal = ({ match, onRefresh, onCancel }: any) => {
-    const [confirmText, setConfirmText] = useState('');
-    const [submitting, setSubmitting] = useState(false);
-    return (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[9999] backdrop-blur-sm">
-            <Card variant="panel" className="max-w-md w-full border-brand/30 shadow-[0_0_50px_rgba(77,120,255,0.15)]">
-                <h3 className="text-xl font-bold flex items-center gap-2 mb-4 text-white"><RotateCcw className="text-brand"/> Refresh Match?</h3>
-                <div className="bg-surface-dark p-3 rounded-lg mb-4 text-center border border-white/5">
-                    <div className="text-white font-black text-lg">{match.team1Name || 'TBD'} <span className="text-content-muted text-sm mx-2">vs</span> {match.team2Name || 'TBD'}</div>
-                    <div className="text-xs text-content-muted mt-1 uppercase tracking-widest text-brand font-bold">Round {match.round || '-'}</div>
-                </div>
-                <div className="text-sm text-content-secondary space-y-2 mb-6 bg-surface-ground p-4 rounded-xl border border-white/5">
-                    <p className="font-bold text-white mb-3">Refreshing this match will:</p>
-                    <ul className="list-disc pl-5 space-y-2 text-content-muted">
-                        <li>Reset the match status to SCHEDULED</li>
-                        <li>Clear all points and scores</li>
-                        <li>Preserve the players, scheduled time, and court</li>
-                    </ul>
-                    <p className="text-amber-500 font-bold mt-4 flex items-center gap-1.5"><AlertTriangle size={16}/> The referee will need to re-score this match.</p>
-                </div>
-                <div className="mb-6">
-                    <label className="block text-xs font-bold text-content-muted mb-2 uppercase tracking-widest">Type "REFRESH" to confirm:</label>
-                    <input 
-                        type="text" 
-                        value={confirmText} 
-                        onChange={(e) => setConfirmText(e.target.value.toUpperCase())} 
-                        className="w-full bg-surface-dark border border-white/10 rounded-xl p-3 text-white focus:outline-none focus:border-brand transition-colors font-mono tracking-widest"
-                        placeholder="REFRESH"
-                    />
-                </div>
-                <div className="flex gap-3">
-                    <button onClick={onCancel} disabled={submitting} className="flex-1 py-3 rounded-xl font-bold bg-white/5 hover:bg-white/10 text-white transition-colors disabled:opacity-50">Cancel</button>
-                    <button 
-                        onClick={async () => {
-                            if (confirmText !== 'REFRESH') return;
-                            setSubmitting(true);
-                            await onRefresh();
-                            setSubmitting(false);
-                        }} 
-                        disabled={confirmText !== 'REFRESH' || submitting}
-                        className="flex-1 py-3 flex justify-center items-center rounded-xl font-bold bg-brand hover:bg-brand-light disabled:opacity-50 disabled:cursor-not-allowed text-white transition-all shadow-lg shadow-brand/20 relative"
-                    >
-                        {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : "Confirm Refresh"}
-                    </button>
-                </div>
-            </Card>
-        </div>
-    );
-};
-
 export const DeleteMatchConfirmModal = ({ match, onDelete, onCancel }: any) => {
     const [confirmText, setConfirmText] = useState('');
     const [submitting, setSubmitting] = useState(false);
@@ -3110,11 +3060,11 @@ const BracketView = ({ matches, teams }: any) => {
                                  <div key={m.id} className="bg-surface-ground border border-white/10 rounded-lg p-3 text-xs relative shadow-sm">
                                      <div className={`p-2 mb-1 rounded flex justify-between items-center ${m.winnerTeamId === m.team1Id ? 'bg-accent-success/20 text-accent-success font-bold' : 'text-content-secondary'}`}>
                                          <span className="truncate max-w-[120px]">{t1?.name || 'TBD'}</span>
-                                         {m.status === 'COMPLETED' && <span className="font-bold">{p1Sets}</span>}
+                                         {(m.status === 'COMPLETED' || String(m.status).toUpperCase() === 'FINISHED') && <span className="font-bold">{p1Sets}</span>}
                                      </div>
                                      <div className={`p-2 rounded flex justify-between items-center ${m.winnerTeamId === m.team2Id ? 'bg-accent-success/20 text-accent-success font-bold' : 'text-content-secondary'}`}>
                                          <span className="truncate max-w-[120px]">{t2?.name || 'TBD'}</span>
-                                         {m.status === 'COMPLETED' && <span className="font-bold">{p2Sets}</span>}
+                                         {(m.status === 'COMPLETED' || String(m.status).toUpperCase() === 'FINISHED') && <span className="font-bold">{p2Sets}</span>}
                                      </div>
                                  </div>
                              )
@@ -3765,7 +3715,7 @@ const AutoMatchSuggestions = ({ tournament, matches, categoryId }: { tournament:
         let newSuggestions: any[] = [];
         
         const prereqMatches = [...qfMatches, ...playInMatches];
-        if (prereqMatches.length > 0 && prereqMatches.every(m => m.status === 'COMPLETED' && m.winnerTeamId) && sfMatches.length === 0) {
+        if (prereqMatches.length > 0 && prereqMatches.every(m => (m.status === 'COMPLETED' || String(m.status).toUpperCase() === 'FINISHED') && m.winnerTeamId) && sfMatches.length === 0) {
             const winners = prereqMatches.map(m => m.winnerTeamId).filter(Boolean) as string[];
             const winnerTeams = winners.map(id => tournament.teams?.find(t => t.id === id)).filter(Boolean) as Team[];
             
@@ -3805,7 +3755,7 @@ const AutoMatchSuggestions = ({ tournament, matches, categoryId }: { tournament:
             }
         }
 
-        if (sfMatches.length > 0 && sfMatches.every(m => m.status === 'COMPLETED' && m.winnerTeamId) && fMatches.length === 0) {
+        if (sfMatches.length > 0 && sfMatches.every(m => (m.status === 'COMPLETED' || String(m.status).toUpperCase() === 'FINISHED') && m.winnerTeamId) && fMatches.length === 0) {
             const sfWinners = sfMatches.map(m => m.winnerTeamId).filter(Boolean) as string[];
             const winnerTeams = sfWinners.map(id => tournament.teams?.find(t => t.id === id)).filter(Boolean) as Team[];
             
@@ -4066,6 +4016,7 @@ const ScheduleTab = ({ tournament, categoryId }: { tournament: Tournament; categ
             if (isAmericanoMatch) {
                 await updateMatchDetails(tournament.id, editingMatch.id, {
                     scheduledTime: editingMatch.scheduledTime,
+                    scheduledStartTime: editingMatch.scheduledTime,
                     court: editingMatch.court,
                     team1PlayerIds: editingMatch.team1PlayerIds || [],
                     team2PlayerIds: editingMatch.team2PlayerIds || [],
@@ -4073,11 +4024,18 @@ const ScheduleTab = ({ tournament, categoryId }: { tournament: Tournament; categ
                     team2Name: editingMatch.team2Name || 'TBD'
                 });
             } else {
+                const t1 = tournament.teams?.find((t: any) => t.id === editingMatch.team1Id);
+                const t2 = tournament.teams?.find((t: any) => t.id === editingMatch.team2Id);
                 await updateMatchDetails(tournament.id, editingMatch.id, { 
                     scheduledTime: editingMatch.scheduledTime,
+                    scheduledStartTime: editingMatch.scheduledTime,
                     court: editingMatch.court,
                     team1Id: editingMatch.team1Id,
-                    team2Id: editingMatch.team2Id
+                    team2Id: editingMatch.team2Id,
+                    team1Name: t1 ? t1.name : (editingMatch.team1Name || ''),
+                    team2Name: t2 ? t2.name : (editingMatch.team2Name || ''),
+                    team1PlayerNames: t1 ? [t1.player1?.name, t1.player2?.name].filter(Boolean).join(' & ') : (editingMatch.team1PlayerNames || ''),
+                    team2PlayerNames: t2 ? [t2.player1?.name, t2.player2?.name].filter(Boolean).join(' & ') : (editingMatch.team2PlayerNames || '')
                 });
             }
             setEditingMatch(null);
@@ -4465,7 +4423,7 @@ const ScheduleTab = ({ tournament, categoryId }: { tournament: Tournament; categ
                                 </div>
                             );
                         })()}
-                        <Input label="Date & Time" type="datetime-local" value={editingMatch.scheduledTime.slice(0, 16)} onChange={(v: string) => setEditingMatch({...editingMatch, scheduledTime: v})} />
+                        <Input label="Date & Time" type="datetime-local" value={editingMatch.scheduledTime ? editingMatch.scheduledTime.slice(0, 16) : ''} onChange={(v: string) => setEditingMatch({...editingMatch, scheduledTime: v, scheduledStartTime: v})} />
                         
                         <div className="relative">
                             <label className="block text-xs font-bold text-content-muted uppercase tracking-widest mb-2">Court</label>
@@ -4523,7 +4481,6 @@ const KnockoutTab = ({ tournament, categoryId }: { tournament: Tournament; categ
     const [editingMatch, setEditingMatch] = useState<Match | null>(null);
     const [isSavingMatch, setIsSavingMatch] = useState(false);
     const [deletingMatch, setDeletingMatch] = useState<Match | null>(null);
-    const [refreshingMatch, setRefreshingMatch] = useState<Match | null>(null);
     const [correctingScoreMatch, setCorrectingScoreMatch] = useState<Match | null>(null);
     const [showAddMatch, setShowAddMatch] = useState(false);
     const [selectedColKey, setSelectedColKey] = useState<string>('ALL');
@@ -4593,6 +4550,7 @@ const KnockoutTab = ({ tournament, categoryId }: { tournament: Tournament; categ
             if (isAmericanoMatch) {
                 await updateMatchDetails(tournament.id, editingMatch.id, {
                     scheduledTime: editingMatch.scheduledTime,
+                    scheduledStartTime: editingMatch.scheduledTime,
                     court: editingMatch.court,
                     team1PlayerIds: editingMatch.team1PlayerIds || [],
                     team2PlayerIds: editingMatch.team2PlayerIds || [],
@@ -4600,11 +4558,18 @@ const KnockoutTab = ({ tournament, categoryId }: { tournament: Tournament; categ
                     team2Name: editingMatch.team2Name || 'TBD'
                 });
             } else {
+                const t1 = tournament.teams?.find((t: any) => t.id === editingMatch.team1Id);
+                const t2 = tournament.teams?.find((t: any) => t.id === editingMatch.team2Id);
                 await updateMatchDetails(tournament.id, editingMatch.id, { 
                     scheduledTime: editingMatch.scheduledTime,
+                    scheduledStartTime: editingMatch.scheduledTime,
                     court: editingMatch.court,
                     team1Id: editingMatch.team1Id,
-                    team2Id: editingMatch.team2Id
+                    team2Id: editingMatch.team2Id,
+                    team1Name: t1 ? t1.name : (editingMatch.team1Name || ''),
+                    team2Name: t2 ? t2.name : (editingMatch.team2Name || ''),
+                    team1PlayerNames: t1 ? [t1.player1?.name, t1.player2?.name].filter(Boolean).join(' & ') : (editingMatch.team1PlayerNames || ''),
+                    team2PlayerNames: t2 ? [t2.player1?.name, t2.player2?.name].filter(Boolean).join(' & ') : (editingMatch.team2PlayerNames || '')
                 });
             }
             setEditingMatch(null);
@@ -4620,22 +4585,6 @@ const KnockoutTab = ({ tournament, categoryId }: { tournament: Tournament; categ
         if (!editingMatch) return;
         setDeletingMatch(editingMatch);
         setEditingMatch(null);
-    };
-
-    const handleRefreshMatch = async () => {
-        if (!refreshingMatch) return;
-        try {
-            await updateMatchDetails(tournament.id, refreshingMatch.id, {
-                status: MatchStatus.SCHEDULED,
-                score: null as any,
-                winnerTeamId: null as any,
-                refereeNotes: []
-            });
-            setRefreshingMatch(null);
-        } catch (e) {
-            console.error(e);
-            alert('Failed to refresh match');
-        }
     };
 
     return (
@@ -4706,7 +4655,7 @@ const KnockoutTab = ({ tournament, categoryId }: { tournament: Tournament; categ
                                          const t1 = (tournament.teams || []).find(t => t.id === m.team1Id);
                                          const t2 = (tournament.teams || []).find(t => t.id === m.team2Id);
                                          const isLive = m.status === 'IN_PROGRESS';
-                                         const isFinished = m.status === 'COMPLETED';
+                                         const isFinished = (m.status === 'COMPLETED' || String(m.status).toUpperCase() === 'FINISHED');
                                          
                                          let p1Sets = m.score?.p1Sets || 0;
                                          let p2Sets = m.score?.p2Sets || 0;
@@ -4834,14 +4783,6 @@ const KnockoutTab = ({ tournament, categoryId }: { tournament: Tournament; categ
                 />
             )}
 
-            {refreshingMatch && (
-                <RefreshMatchConfirmModal 
-                    match={refreshingMatch}
-                    onCancel={() => setRefreshingMatch(null)}
-                    onRefresh={handleRefreshMatch}
-                />
-            )}
-
             {correctingScoreMatch && (
                 <ScoreCorrectionModal 
                     match={correctingScoreMatch}
@@ -4862,14 +4803,9 @@ const KnockoutTab = ({ tournament, categoryId }: { tournament: Tournament; categ
                     footer={
                         <div className="flex flex-col gap-2 w-full">
                             {editingMatch.status === 'COMPLETED' && (
-                                <>
-                                    <button onClick={() => { setCorrectingScoreMatch(editingMatch); setEditingMatch(null); }} className="w-full bg-white/10 hover:bg-white/20 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 border border-[#E65C31]/50 border-dashed text-[#E65C31] transition-colors shadow-[0_0_15px_rgba(230,92,49,0.1)] hover:shadow-[0_0_25px_rgba(230,92,49,0.2)]">
-                                        <Edit3 size={16}/> Correct Final Score
-                                    </button>
-                                    <button onClick={() => { setRefreshingMatch(editingMatch); setEditingMatch(null); }} className="w-full bg-white/10 hover:bg-white/20 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 border border-brand/50 border-dashed text-brand transition-colors shadow-[0_0_15px_rgba(77,120,255,0.1)] hover:shadow-[0_0_25px_rgba(77,120,255,0.2)]">
-                                        <RotateCcw size={16}/> Refresh Match
-                                    </button>
-                                </>
+                                <button onClick={() => { setCorrectingScoreMatch(editingMatch); setEditingMatch(null); }} className="w-full bg-white/10 hover:bg-white/20 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 border border-[#E65C31]/50 border-dashed text-[#E65C31] transition-colors shadow-[0_0_15px_rgba(230,92,49,0.1)] hover:shadow-[0_0_25px_rgba(230,92,49,0.2)]">
+                                    <Edit3 size={16}/> Correct Final Score
+                                </button>
                             )}
                             <button onClick={handleSaveEdit} disabled={isSavingMatch} className="w-full bg-brand text-content-inverse py-3 rounded-lg font-bold hover:bg-brand-light transition-colors shadow-lg shadow-brand/20 disabled:opacity-50 flex items-center justify-center">
                                 {isSavingMatch ? <Loader2 size={20} className="animate-spin" /> : "Save Details"}
@@ -5025,7 +4961,7 @@ const KnockoutTab = ({ tournament, categoryId }: { tournament: Tournament; categ
                             );
                         })()}
 
-                        <Input label="Date & Time" type="datetime-local" value={editingMatch.scheduledTime.slice(0, 16)} onChange={(v: string) => setEditingMatch({...editingMatch, scheduledTime: v})} />
+                        <Input label="Date & Time" type="datetime-local" value={editingMatch.scheduledTime ? editingMatch.scheduledTime.slice(0, 16) : ''} onChange={(v: string) => setEditingMatch({...editingMatch, scheduledTime: v, scheduledStartTime: v})} />
                         
                         <div className="relative">
                             <label className="block text-xs font-bold text-content-muted uppercase tracking-widest mb-2">Court</label>
@@ -5382,7 +5318,7 @@ const ResultsTab = ({ tournament, categoryId }: { tournament: Tournament; catego
     const { matches: globalMatches } = useTournamentMatches(tournament.id);
     const [editingScoreMatch, setEditingScoreMatch] = useState<Match | null>(null);
 
-    const filteredMatches = (globalMatches || []).filter(m => (!categoryId || m.categoryId === categoryId) && (m.status === MatchStatus.COMPLETED || String(m.status) === 'COMPLETED'));
+    const filteredMatches = (globalMatches || []).filter(m => (!categoryId || m.categoryId === categoryId) && ((m.status === MatchStatus.COMPLETED || String(m.status).toUpperCase() === 'FINISHED') || String(m.status) === 'COMPLETED'));
 
     const groupMatches = filteredMatches.filter(m => m.stage === 'GROUP');
     const playoffMatches = filteredMatches.filter(m => m.stage === 'PLAYOFF' || m.stage === 'KNOCKOUT');

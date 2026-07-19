@@ -1,4 +1,4 @@
-import { writeBatch, doc, collection, serverTimestamp, increment, getDoc } from 'firebase/firestore';
+import { writeBatch, doc, collection, serverTimestamp, increment, getDoc, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import { db } from './storage';
 
 /**
@@ -61,4 +61,46 @@ export const recordAtomicPoint = async (
 
   // 4. Commit batch
   await batch.commit();
+};
+
+/**
+ * Reverts the most recent point recorded for a match.
+ */
+export const undoLastAtomicPoint = async (matchId: string) => {
+  if (!db) return;
+
+  try {
+    const eventsRef = collection(db, `matches/${matchId}/events`);
+    const q = query(eventsRef, orderBy('timestamp', 'desc'), limit(1));
+    const snap = await getDocs(q);
+    
+    if (snap.empty) return;
+    
+    const lastEventDoc = snap.docs[0];
+    const eventData = lastEventDoc.data();
+    
+    const batch = writeBatch(db);
+    batch.delete(lastEventDoc.ref);
+    
+    const scoringPlayerId = eventData.scoringPlayerId;
+    const shotType = eventData.shotType;
+    
+    if (scoringPlayerId && scoringPlayerId !== 'unknown' && scoringPlayerId !== 'p1' && scoringPlayerId !== 'p2' && scoringPlayerId !== 'p3' && scoringPlayerId !== 'p4') {
+      const playerDocRef = doc(db, `players/${scoringPlayerId}`);
+      const playerSnap = await getDoc(playerDocRef);
+      if (playerSnap.exists()) {
+        const playerUpdates: any = {
+          'stats.totalPointsWon': increment(-1),
+        };
+        if (shotType === 'smash') playerUpdates['stats.totalSmashes'] = increment(-1);
+        if (shotType === 'vibora') playerUpdates['stats.totalViboras'] = increment(-1);
+        
+        batch.update(playerDocRef, playerUpdates);
+      }
+    }
+    
+    await batch.commit();
+  } catch (err) {
+    console.error("Failed to undo atomic point:", err);
+  }
 };

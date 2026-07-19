@@ -175,7 +175,7 @@ export default function OBSOverlay({ matchId, tournamentId }: { matchId: string,
     return team === 'team1' ? s.team1 > s.team2 && setIdx < setsCount : s.team2 > s.team1 && setIdx < setsCount;
   };
 
-  if (!match || match.status === MatchStatus.SCHEDULED || match.status === MatchStatus.COMPLETED) return null; // blank page until match goes live and not when it's done
+  if (!match || match.status === MatchStatus.SCHEDULED || (match.status === MatchStatus.COMPLETED || String(match.status).toUpperCase() === 'FINISHED')) return null; // blank page until match goes live and not when it's done
 
   const t1Name = match.team1Name || (match.team1Id ? 'TEAM 1' : 'TBD');
   const t2Name = match.team2Name || (match.team2Id ? 'TEAM 2' : 'TBD');

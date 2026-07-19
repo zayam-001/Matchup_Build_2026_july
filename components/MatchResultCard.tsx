@@ -109,7 +109,7 @@ export const MatchResultCard = ({ match, teams, tournament, onEdit }: { match: M
                              {winnerText}
                         </div>
                         <div className="text-white font-black uppercase tracking-[0.2em] mt-1 text-sm sm:text-base">
-                             {match.status === 'COMPLETED' ? 'WON' : 'TBD'}
+                             {((match.status === 'COMPLETED' || String(match.status).toUpperCase() === 'FINISHED') || String(match.status).toUpperCase() === 'COMPLETED' || String(match.status).toUpperCase() === 'FINISHED') ? 'WON' : 'TBD'}
                         </div>
                     </div>
                     
@@ -185,7 +185,7 @@ export const MatchResultCard = ({ match, teams, tournament, onEdit }: { match: M
                             Edit Score
                         </button>
                     )}
-                    {(match.status === 'COMPLETED' || String(match.status) === 'COMPLETED') && (
+                    {((match.status === 'COMPLETED' || String(match.status).toUpperCase() === 'FINISHED') || String(match.status).toUpperCase() === 'COMPLETED' || String(match.status).toUpperCase() === 'FINISHED') && (
                         <button 
                             onClick={() => setShowWinnerBanner(true)} 
                             className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 hover:border-amber-500/40 px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all shadow flex items-center gap-1.5"

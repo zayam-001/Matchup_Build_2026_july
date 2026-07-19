@@ -39,7 +39,6 @@ export const completeMatchAndAdvance = async (
       const matchDoc = await txn.get(matchRef);
       const stubDoc = await txn.get(matchStubRef);
       const standingDoc = standingRef ? await txn.get(standingRef) : null;
-      const tournamentDoc = await txn.get(tournamentRef);
 
       // 2. All writes after the reads are done
       // Process Standings if applicable (e.g., Round Robin)
@@ -93,15 +92,9 @@ export const completeMatchAndAdvance = async (
       }
 
       // Update tournament global metrics
-      if (tournamentDoc.exists()) {
-        txn.update(tournamentRef, {
-          completedMatchCount: increment(1)
-        });
-      } else {
-        txn.set(tournamentRef, {
-          completedMatchCount: increment(1)
-        }, { merge: true });
-      }
+      txn.set(tournamentRef, {
+        completedMatchCount: increment(1)
+      }, { merge: true });
     });
   } catch (error) {
     console.error('Error during completeMatchAndAdvance transaction:', error);

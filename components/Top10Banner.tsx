@@ -25,7 +25,7 @@ export const Top10Banner: React.FC<Top10BannerProps> = ({ players, tournamentNam
 
     // Get tournament's year and month dynamically based on matches played or current date
     const getBannerDate = () => {
-        const completedMatch = matches.find(m => m.status === 'COMPLETED' || m.completedAt || m.scheduledTime);
+        const completedMatch = matches.find(m => (m.status === 'COMPLETED' || String(m.status).toUpperCase() === 'FINISHED') || m.completedAt || m.scheduledTime);
         const rawDate = completedMatch?.completedAt || completedMatch?.scheduledTime || completedMatch?.createdAt;
         const dateObj = rawDate ? new Date(rawDate) : new Date();
         const year = dateObj.getFullYear();

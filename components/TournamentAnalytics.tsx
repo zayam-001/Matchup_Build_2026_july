@@ -105,7 +105,7 @@ export const TournamentAnalytics: React.FC<TournamentAnalyticsProps> = ({ tourna
         // Supplement player analytics with individual shot event points (e.g. tracking who got the winners/aces in live scorematching) 
         // if matches contain live click event histories to differentiate teammate performance.
         const filteredMatches = matches.filter(m => 
-            m.status === MatchStatus.COMPLETED && 
+            (m.status === MatchStatus.COMPLETED || String(m.status).toUpperCase() === 'FINISHED') && 
             (!selectedCategoryId || m.categoryId === selectedCategoryId)
         );
 

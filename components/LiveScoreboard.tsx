@@ -173,7 +173,7 @@ export const LiveScoreboard: React.FC<{ initialTournamentId?: string, initialCat
         const matchesForCat = activeTournament.isMultiCategory && selectedCategoryId
             ? tournamentMatches.filter((m: any) => m.categoryId === selectedCategoryId)
             : tournamentMatches || [];
-        const liveMatchCount = matchesForCat.filter((m: any) => m.status === MatchStatus.IN_PROGRESS).length;
+        const liveMatchCount = matchesForCat.filter((m: any) => m.status === MatchStatus.IN_PROGRESS && !m.winnerTeamId).length;
         
         if (selectedCategoryId !== prevCategory) {
             setPrevCategory(selectedCategoryId);
@@ -198,9 +198,9 @@ export const LiveScoreboard: React.FC<{ initialTournamentId?: string, initialCat
         ? (activeTournament.teams || []).filter((t: any) => t.categoryId === selectedCategoryId)
         : (activeTournament.teams || []);
 
-  const liveMatches = matchesToDisplay.filter((m: any) => m.status === MatchStatus.IN_PROGRESS);
+  const liveMatches = matchesToDisplay.filter((m: any) => m.status === MatchStatus.IN_PROGRESS && !m.winnerTeamId);
   const completedMatches = matchesToDisplay
-    .filter((m: any) => m.status === MatchStatus.COMPLETED)
+    .filter((m: any) => (m.status === MatchStatus.COMPLETED || String(m.status).toUpperCase() === 'FINISHED') || m.winnerTeamId)
     .sort((a: any, b: any) => getMatchTimestamp(b) - getMatchTimestamp(a));
   
   const upcomingMatches = matchesToDisplay
@@ -302,7 +302,7 @@ export const LiveScoreboard: React.FC<{ initialTournamentId?: string, initialCat
             <div className="max-w-7xl mx-auto px-4 mb-6">
                 <div className="flex flex-wrap items-center justify-start gap-2">
                     {activeTournament.categories.map((cat: any) => {
-                        const hasLiveMatch = tournamentMatches?.some((m: any) => m.categoryId === cat.id && m.status === MatchStatus.IN_PROGRESS);
+                        const hasLiveMatch = tournamentMatches?.some((m: any) => m.categoryId === cat.id && m.status === MatchStatus.IN_PROGRESS && !m.winnerTeamId);
                         return (
                         <button
                             key={cat.id}
@@ -541,7 +541,7 @@ const TournamentList = ({tournaments, onSelect}: any) => {
         if (t.endDate && new Date(t.endDate) < now) {
             return true;
         }
-        return t.status === 'COMPLETED' || t.status === 'RETIRED';
+        return (t.status === 'COMPLETED' || String(t.status).toUpperCase() === 'FINISHED') || t.status === 'RETIRED';
     };
 
     const liveTournaments = tournaments.filter((t: Tournament) => !isTournamentPassed(t));
@@ -697,6 +697,12 @@ const LiveCard = ({ match: initialMatch, teams, sponsors, tournament }: any) => 
     const effectiveHistory = getEffectiveEvents(match.score?.history || []);
 
     useEffect(() => {
+        const isFinished = (match.status === 'COMPLETED' || String(match.status).toUpperCase() === 'FINISHED') || String(match.status).toUpperCase() === 'COMPLETED' || String(match.status).toUpperCase() === 'FINISHED';
+        if (isFinished) {
+            setDisplayScore(match.score);
+            return;
+        }
+        
         if (effectiveHistory.length > lastHistoryLength && lastHistoryLength > 0) {
             // New point added!
             const ev = effectiveHistory[effectiveHistory.length - 1];
@@ -813,7 +819,7 @@ const LiveCard = ({ match: initialMatch, teams, sponsors, tournament }: any) => 
     let cardClasses = "";
     let glowClasses = "";
     let svgStrokes = "";
-    let statusText = match.status === 'COMPLETED' ? 'COMPLETED' : match.roundName || 'FINAL';
+    let statusText = (match.status === 'COMPLETED' || String(match.status).toUpperCase() === 'FINISHED') ? 'COMPLETED' : match.roundName || 'FINAL';
     let uiColor = { primary: '#00E5FF', bg: '#0D1520', stroke: 'rgba(0,229,255,' };
     
     switch (state) {
@@ -1442,7 +1448,7 @@ const ScheduleRow = ({ match, teams }: any) => {
 const BroadcastMode = ({ tournament, onClose }: { tournament: Tournament, onClose: () => void }) => {
     const { matches: globalMatches } = useTournamentMatches(tournament.id);
     const [selectedMatchId, setSelectedMatchId] = useState<string | 'ALL'>('ALL');
-    const liveMatches = globalMatches.filter(m => m.status === MatchStatus.IN_PROGRESS);
+    const liveMatches = globalMatches.filter(m => m.status === MatchStatus.IN_PROGRESS && !m.winnerTeamId);
     
     // Realtime Watchers Simulation
     const baseWatchers = Math.max(800, (liveMatches.length * 400) + Math.floor(Math.random() * 500));
@@ -1680,6 +1686,12 @@ const BroadcastMatchCard = ({ match: initialMatch, teams, compact, categories, t
     const effectiveHistory = getEffectiveEvents(match.score?.history || []);
 
     useEffect(() => {
+        const isFinished = (match.status === 'COMPLETED' || String(match.status).toUpperCase() === 'FINISHED') || String(match.status).toUpperCase() === 'COMPLETED' || String(match.status).toUpperCase() === 'FINISHED';
+        if (isFinished) {
+            setDisplayScore(match.score);
+            return;
+        }
+        
         if (effectiveHistory.length > lastHistoryLength && lastHistoryLength > 0) {
             // New point added!
             const ev = effectiveHistory[effectiveHistory.length - 1];
@@ -1751,7 +1763,7 @@ const BroadcastMatchCard = ({ match: initialMatch, teams, compact, categories, t
     const state = isStarPoint ? 'STAR_POINT' : isSuperTiebreak ? 'SUPER_TIEBREAK' : isTiebreak ? 'TIEBREAK' : 'NORMAL';
 
     let cardClasses = "";
-    let statusText = match.status === 'COMPLETED' ? 'COMPLETED' : match.roundName || 'FINAL';
+    let statusText = (match.status === 'COMPLETED' || String(match.status).toUpperCase() === 'FINISHED') ? 'COMPLETED' : match.roundName || 'FINAL';
     
     switch (state) {
         case 'STAR_POINT':
@@ -1937,7 +1949,7 @@ const BroadcastMatchCard = ({ match: initialMatch, teams, compact, categories, t
 const SpectatorResults = ({ matches, teams, tournament }: { matches: Match[]; teams: Team[]; tournament?: any }) => {
     const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
     const [activeStageTab, setActiveStageTab] = useState<'all' | 'knockout' | 'group'>('all');
-    const filteredMatches = matches.filter(m => m.status === MatchStatus.COMPLETED || String(m.status).toUpperCase() === 'COMPLETED');
+    const filteredMatches = matches.filter(m => (m.status === MatchStatus.COMPLETED || String(m.status).toUpperCase() === 'FINISHED') || String(m.status).toUpperCase() === 'COMPLETED');
 
     const isGroupMatch = (m: Match) => {
         const stage = m.stage?.toUpperCase();
@@ -2307,8 +2319,8 @@ const SpectatorResults = ({ matches, teams, tournament }: { matches: Match[]; te
 };
 
 const SpectatorSchedule = ({ matches, teams, onSelectTab }: { matches: Match[]; teams: Team[]; onSelectTab: (tab: 'live' | 'timelines' | 'standings' | 'results' | 'schedule') => void }) => {
-    // Upcoming matches are status !== 'COMPLETED'
-    const upcomingMatches = matches.filter(m => m.status !== MatchStatus.COMPLETED && String(m.status).toUpperCase() !== 'COMPLETED');
+    // Upcoming matches are (status !== 'COMPLETED' && String(status).toUpperCase() !== 'FINISHED')
+    const upcomingMatches = matches.filter(m => (m.status !== MatchStatus.COMPLETED && String(m.status).toUpperCase() !== 'FINISHED') && String(m.status).toUpperCase() !== 'COMPLETED');
 
     const getTeamName = (teamId: string, fallbackName?: string) => {
         const t = teams.find(team => team.id === teamId);
@@ -2322,7 +2334,7 @@ const SpectatorSchedule = ({ matches, teams, onSelectTab }: { matches: Match[]; 
     const renderCard = (m: Match) => {
         const t1 = getTeamName(m.team1Id, m.team1Name);
         const t2 = getTeamName(m.team2Id, m.team2Name);
-        const isLive = m.status === MatchStatus.IN_PROGRESS || String(m.status).toUpperCase() === 'IN_PROGRESS';
+        const isLive = (m.status === MatchStatus.IN_PROGRESS || String(m.status).toUpperCase() === 'IN_PROGRESS') && !m.winnerTeamId;
 
         return (
             <Card 

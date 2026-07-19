@@ -70,7 +70,7 @@ export const useLeaderboard = () => {
 
             matches.forEach((m: any) => {
               // Usually status 'COMPLETED' or 2
-              if (m.status === 'COMPLETED' || m.status === 2 || m.winner) {
+              if ((m.status === 'COMPLETED' || String(m.status).toUpperCase() === 'FINISHED') || m.status === 2 || m.winner) {
                 const t1Idx = m.team1Players || [];
                 const t2Idx = m.team2Players || [];
 
