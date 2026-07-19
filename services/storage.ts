@@ -2664,8 +2664,13 @@ export const editTeamInTournament = async (tId: string, teamId: string, name: st
 };
 
 
-export const getCourtsByVenueIds = async (...args: any[]) => {
-    return [];
+export const getCourtsByVenueIds = async (venueIds: string[]) => {
+    if (!db) return [];
+    if (!venueIds || venueIds.length === 0) return [];
+    const courtsRef = collection(db, "courts");
+    const q = query(courtsRef, where("venueId", "in", venueIds));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
 export const startMatch = async (tId: any, mId: any, ...args: any[]) => {
