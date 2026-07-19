@@ -2,7 +2,7 @@ import { CloneTournamentModal } from "./CloneTournamentModal";
 import { TournamentLiveBadge } from "./TournamentLiveBadge";
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { TournamentFormat, SkillLevel, Tournament, RegistrationStatus, MatchStatus, RoundRobinType, Team, Match, SponsorTier, Sponsor, Venue } from '../types';
-import { createTournament, deleteTournament, updateTournament, subscribeToTournaments, subscribeToTournament, updateTeamStatus, generateSchedule, assignTeamGroup, updateTournamentTeamsGroups, updateMatchDetails, addKnockoutMatch, subscribeToVenues, uploadSystemImage, getOrganiserCredits, deductOrganiserCredits, enrollTeamManually, subscribeToStandings, searchGlobalTeams, refundOrganiserCredits, retireTournament, appendNewMexicanoRound, deleteMatch, replaceTeamInTournament, editTeamInTournament, syncAllDataToGlobal } from '../services/storage';
+import { createTournament, deleteTournament, updateTournament, subscribeToTournaments, subscribeToTournament, updateTeamStatus, generateSchedule, assignTeamGroup, updateTournamentTeamsGroups, updateMatchDetails, addKnockoutMatch, subscribeToVenues, uploadSystemImage, getOrganiserCredits, deductOrganiserCredits, enrollTeamManually, subscribeToStandings, searchGlobalTeams, refundOrganiserCredits, retireTournament, appendNewMexicanoRound, deleteMatch, replaceTeamInTournament, editTeamInTournament, syncAllDataToGlobal, checkAndHealTournamentStats } from '../services/storage';
 import { Check, X, Calendar, Users, Trophy, PlayCircle, Lock, RefreshCcw, ChevronLeft, Plus, ChevronRight, Grid, ArrowRight, Settings, Edit3, ArrowUpRight, MapPin, DollarSign, Database, Trash2, Mail, Phone, Hash, AlertTriangle, Loader2, LogOut, Camera, Image as ImageIcon, Crown, Gem, Star, Medal, Activity, Clock, PlusCircle, Download, Share2, Copy, QrCode, ExternalLink, List, Archive, ChevronDown, History, RotateCcw } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -495,19 +495,24 @@ export const AdminDashboard: React.FC<{ initialAuthenticated?: boolean, onLogout
         // Restrict tournaments strictly to the current admin's UID/email to prevent cross-admin visibility.
         // We fetch tournaments securely from the backend matching either UID or Email for cross-provider logins,
         // and apply secondary client filtering for Defense-in-Depth.
+        const isGlobalAdmin = currentUser.email?.toLowerCase() === 'eventletics.business@gmail.com' || currentUser.email?.toLowerCase() === 'zayam.anjum@gmail.com';
+        
         const unsubscribe = subscribeToTournaments((data: Tournament[]) => {
+            console.log("Tournaments fetched for", currentUser.email, "UID:", currentUser.uid, data);
             // Apply strict secondary security filter based on admin tagging (UID and Email)
-            const filtered = data.filter(t => {
+            const filtered = isGlobalAdmin ? data : data.filter(t => {
                 const matchesUid = currentUser.uid && (
                     t.organizerId === currentUser.uid ||
                     (currentUser.email?.toLowerCase() === 'eventletics.business@gmail.com' && (t.organizerId === 'e3r8tmcuksen0mkeiroktnuzl1a2' || t.organizerId === 'E3r8tMCukSeN0mKEiRokTNuzL1a2' || t.organizerId === 'l7Uwo7VDdVhzVz4mtEhEpg9XcTP2'))
                 );
                 const matchesEmail = (t.organizerEmail && t.organizerEmail.toLowerCase() === currentUser.email?.toLowerCase()) || 
                                      (t.adminTag && t.adminTag.toLowerCase() === currentUser.email?.toLowerCase());
-                return matchesUid || matchesEmail;
+                const res = matchesUid || matchesEmail;
+                console.log("Checking tournament", t.id, t.name, "matchesUid:", matchesUid, "matchesEmail:", matchesEmail, "res:", res);
+                return res;
             });
             setTournaments(filtered);
-        }, currentUser?.uid || undefined, currentUser?.email || undefined);
+        }, isGlobalAdmin ? undefined : (currentUser?.uid || undefined), isGlobalAdmin ? undefined : (currentUser?.email || undefined));
         const unsubVenues = subscribeToVenues((data: Venue[]) => {
             setAllVenues(data);
             setVenuesCount(data.length);
@@ -1587,7 +1592,7 @@ function CreateTournamentWizard({ initialData, onCancel, onCreate }: any) {
                 venue: finalVenue,
                 organizerId: auth.currentUser?.uid || '',
                 organizerEmail: auth.currentUser?.email || '',
-                adminTag: auth.currentUser?.email || ''
+                adminTag: initialData?.adminTag || auth.currentUser?.email || ''
             };
 
             if (initialData) {
@@ -3142,6 +3147,15 @@ const StandingsTab = ({ tournament, categoryId }: any) => {
                 </h3>
                 
                 <div className="flex flex-wrap items-center gap-3">
+                    <button
+                        onClick={async () => {
+                            if (!tournament?.id || !categoryMatches || categoryMatches.length === 0) return;
+                            await checkAndHealTournamentStats(tournament, categoryMatches);
+                        }}
+                        className="bg-white/5 hover:bg-white/10 text-white text-xs font-black uppercase tracking-wider py-2.5 px-5 rounded-xl transition-all flex items-center gap-2 cursor-pointer border border-white/10"
+                    >
+                        <RotateCcw size={16} className="text-brand" /> Recalculate Standings
+                    </button>
                     <button
                         onClick={() => {
                             setExporterTeams(standings);

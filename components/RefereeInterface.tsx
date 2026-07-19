@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { subscribeToTournaments, subscribeToTournament, updateMatchScore, addRefereeTag, triggerBroadcastEvent, subscribeToStandings, startMatch, loginReferee } from '../services/storage';
+import { subscribeToTournaments, subscribeToTournament, updateMatchScore, addRefereeTag, triggerBroadcastEvent, subscribeToStandings, startMatch, loginReferee, resumeMatch } from '../services/storage';
 import { addPoint } from '../services/scoreEngine';
 import { Match, MatchStatus, Tournament, SponsorTier } from '../types';
 import { Lock, Play, RotateCcw, AlertCircle, Award, Check, X, Trophy, ChevronRight, Edit2, Clock, MapPin, ChevronLeft, Loader2, Eye, EyeOff, ChevronDown, ChevronUp } from 'lucide-react';
@@ -418,7 +418,7 @@ const RefereeCategoryView = ({
                 const p1Sets = actualSets.p1;
                 const p2Sets = actualSets.p2;
                 const isCompleted = (m.status === MatchStatus.COMPLETED || String(m.status).toUpperCase() === 'FINISHED') || String(m.status).toUpperCase() === 'COMPLETED' || !!m.winnerTeamId;
-                const hasScore = p1Sets > 0 || p2Sets > 0 || isCompleted || m.status === MatchStatus.IN_PROGRESS || String(m.status).toUpperCase() === 'LIVE';
+                const hasScore = p1Sets > 0 || p2Sets > 0 || isCompleted || m.status === MatchStatus.IN_PROGRESS || String(m.status).toUpperCase() === 'LIVE' || String(m.status).toUpperCase() === 'IN_PROGRESS';
                 const isScheduled = m.status === MatchStatus.SCHEDULED || !m.status || String(m.status).toUpperCase() === 'SCHEDULED';
 
                 return (
@@ -470,7 +470,7 @@ const RefereeCategoryView = ({
                                         <span key={i} className="text-content-muted">{s}</span>
                                     ))}
                                     <span className="text-white bg-white/10 px-1.5 py-0.5 rounded text-sm mx-1">{p1Sets}</span>
-                                    {(m.status === MatchStatus.IN_PROGRESS || String(m.status).toUpperCase() === 'LIVE' || (isCompleted && !m.score?.p1SetScores?.length)) && (
+                                    {(m.status === MatchStatus.IN_PROGRESS || String(m.status).toUpperCase() === 'LIVE' || String(m.status).toUpperCase() === 'IN_PROGRESS' || (isCompleted && !m.score?.p1SetScores?.length)) && (
                                         <span className={m.winnerTeamId === m.team1Id ? 'text-accent-live' : 'text-white'}>{m.score?.p1Games || 0}</span>
                                     )}
                                 </div>
@@ -491,7 +491,7 @@ const RefereeCategoryView = ({
                                         <span key={i} className="text-content-muted">{s}</span>
                                     ))}
                                     <span className="text-white bg-white/10 px-1.5 py-0.5 rounded text-sm mx-1">{p2Sets}</span>
-                                    {(m.status === MatchStatus.IN_PROGRESS || String(m.status).toUpperCase() === 'LIVE' || (isCompleted && !m.score?.p2SetScores?.length)) && (
+                                    {(m.status === MatchStatus.IN_PROGRESS || String(m.status).toUpperCase() === 'LIVE' || String(m.status).toUpperCase() === 'IN_PROGRESS' || (isCompleted && !m.score?.p2SetScores?.length)) && (
                                         <span className={m.winnerTeamId === m.team2Id ? 'text-accent-live' : 'text-white'}>{m.score?.p2Games || 0}</span>
                                     )}
                                 </div>
@@ -499,7 +499,7 @@ const RefereeCategoryView = ({
                         </div>
                         <div className="flex justify-between items-center mt-2 border-t border-white/5 pt-2">
                             <div className="text-sm text-content-muted">{m.roundName}</div>
-                            {(m.status === MatchStatus.IN_PROGRESS || String(m.status).toUpperCase() === 'LIVE') && !isCompleted && <div className="animate-pulse w-2 h-2 bg-accent-live rounded-full"></div>}
+                            {(m.status === MatchStatus.IN_PROGRESS || String(m.status).toUpperCase() === 'LIVE' || String(m.status).toUpperCase() === 'IN_PROGRESS') && !isCompleted && <div className="animate-pulse w-2 h-2 bg-accent-live rounded-full"></div>}
                             {isCompleted && <div className="text-xs bg-surface-elevated px-2 py-1 rounded text-content-secondary">Complete</div>}
                         </div>
                     </Card>
@@ -613,6 +613,19 @@ const ScoringControl = ({ match, teams, tournamentId, isAmericano, onUpdate, onB
     const t1 = teams.find((t: any) => t.id === match.team1Id);
     const t2 = teams.find((t: any) => t.id === match.team2Id);
     
+    const handleResumeMatch = async () => {
+        if (confirm('Are you sure you want to resume this match? This will clear the winner and mark it as live again.')) {
+            try {
+                await resumeMatch(tournamentId, match.id);
+                // The subscription will update the local match state
+                onBack(); // Go back so the user sees it as live in the list
+            } catch (err) {
+                console.error('Failed to resume match:', err);
+                alert('Failed to resume match. Please try again.');
+            }
+        }
+    };
+
     // We already have MatchScoringSystem do all the UI
     const handleScoreUpdate = (newScore: any) => {
         if (match.status === MatchStatus.COMPLETED || String(match.status).toUpperCase() === 'FINISHED' || String(match.status).toUpperCase() === 'COMPLETED') return;
@@ -902,6 +915,9 @@ const ScoringControl = ({ match, teams, tournamentId, isAmericano, onUpdate, onB
                             </button>
                             <button onClick={onBack} className="bg-white/5 border border-white/10 text-white px-8 py-4 rounded-xl font-black uppercase tracking-widest text-sm hover:bg-white/10 transition-colors">
                                 Return to Schedule
+                            </button>
+                            <button onClick={handleResumeMatch} className="mt-4 text-xs text-red-500 font-bold uppercase tracking-widest hover:underline">
+                                Rescore / Resume Match (Accidental End)
                             </button>
                         </div>
                     </div>

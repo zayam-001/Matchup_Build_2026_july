@@ -1,4 +1,27 @@
-export const advanceBracket = (matches: any, match: any, winnerId: any, winnerName: any) => { return matches; };
+export const advanceBracket = (allMatches: Match[], completedMatch: Match, winnerId: string, winnerName?: string): Match[] => {
+    return allMatches.map(m => {
+        // If this match is the direct next match for the completed one
+        const isNextMatch = completedMatch.nextMatchId && m.id === completedMatch.nextMatchId;
+        const isTeam1Dep = m.team1Dependency?.sourceId === completedMatch.id;
+        const isTeam2Dep = m.team2Dependency?.sourceId === completedMatch.id;
+
+        if (isTeam1Dep || (isNextMatch && (!m.team1Id || m.team1Id.includes('TBD') || m.team1Id.includes('winner')))) {
+             return { 
+                 ...m, 
+                 team1Id: winnerId,
+                 team1Name: winnerName || m.team1Name || 'Winner'
+             };
+        }
+        if (isTeam2Dep || (isNextMatch && (!m.team2Id || m.team2Id.includes('TBD') || m.team2Id.includes('winner')))) {
+             return { 
+                 ...m, 
+                 team2Id: winnerId,
+                 team2Name: winnerName || m.team2Name || 'Winner'
+             };
+        }
+        return m;
+    });
+};
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithPopup, GoogleAuthProvider, signInAnonymously, createUserWithEmailAndPassword, signInWithEmailAndPassword, updatePassword, setPersistence, browserLocalPersistence, browserSessionPersistence } from 'firebase/auth';
 import { 
@@ -1119,6 +1142,10 @@ export const createTournament = async (t: any) => {
         adminTag: t.adminTag || auth?.currentUser?.email || ''
     };
 
+    if (!newT.adminTag) {
+        throw new Error("Tournament must have an adminTag.");
+    }
+
     if (db) {
         // Save main doc
         const docRef = await addDoc(collection(db, "tournaments"), cleanData(newT));
@@ -1153,8 +1180,8 @@ export const createTournament = async (t: any) => {
 };
 
 export const updateTournament = async (tId: any, data: any, ...args: any[]) => {
-    // Extract sponsors, matches, and teams to prevent overwriting them during settings update
-    const { sponsors, matches, teams, ...mainData } = data;
+    // Extract sponsors, matches, teams, and adminTag to prevent overwriting them during settings update
+    const { sponsors, matches, teams, adminTag, ...mainData } = data;
 
     if (db) {
         const tRef = doc(db, "tournaments", tId);
@@ -2003,22 +2030,48 @@ const calculateStats = (teams: Team[], matches: Match[], format: TournamentForma
         
         let p1Games = 0;
         let p2Games = 0;
-        if (mScore.p1SetScores && mScore.p1SetScores.length > 0) {
+        let p1Sets = 0;
+        let p2Sets = 0;
+
+        if (Array.isArray(mScore)) {
+            // Handle legacy array format: [{team1: 6, team2: 4}, ...]
+            mScore.forEach((s: any) => {
+                const g1 = parseInt(s.team1) || 0;
+                const g2 = parseInt(s.team2) || 0;
+                p1Games += g1;
+                p2Games += g2;
+                if (g1 > g2) p1Sets++;
+                else if (g2 > g1) p2Sets++;
+            });
+        } else if (mScore.sets && Array.isArray(mScore.sets)) {
+            // Handle sets field: { sets: [{team1: 6, team2: 4}, ...] }
+            mScore.sets.forEach((s: any) => {
+                const g1 = parseInt(s.team1) || 0;
+                const g2 = parseInt(s.team2) || 0;
+                p1Games += g1;
+                p2Games += g2;
+                if (g1 > g2) p1Sets++;
+                else if (g2 > g1) p2Sets++;
+            });
+        } else if (mScore.p1SetScores && mScore.p1SetScores.length > 0) {
             p1Games = mScore.p1SetScores.reduce((a: number, b: number) => a + b, 0);
+            p2Games = (mScore.p2SetScores || []).reduce((a: number, b: number) => a + b, 0);
+            
+            mScore.p1SetScores.forEach((s: number, i: number) => {
+                const os = (mScore.p2SetScores || [])[i] || 0;
+                if (s > os) p1Sets++;
+                else if (os > s) p2Sets++;
+            });
+
             if (mScore.p1SetScores.length < (mScore.currentSet || 1)) {
                 p1Games += (mScore.p1Games || 0);
-            }
-        } else {
-            p1Games = mScore.p1Games || 0;
-        }
-
-        if (mScore.p2SetScores && mScore.p2SetScores.length > 0) {
-            p2Games = mScore.p2SetScores.reduce((a: number, b: number) => a + b, 0);
-            if (mScore.p2SetScores.length < (mScore.currentSet || 1)) {
                 p2Games += (mScore.p2Games || 0);
             }
         } else {
+            p1Games = mScore.p1Games || 0;
             p2Games = mScore.p2Games || 0;
+            p1Sets = mScore.p1Sets || 0;
+            p2Sets = mScore.p2Sets || 0;
         }
         
         const isAmericano = format === TournamentFormat.AMERICANO || format === TournamentFormat.MEXICANO;
@@ -2402,27 +2455,31 @@ export const updateMatchScore = async (tId: string, mId: string, newScore: Score
                         await batch.commit();
                     }
                     
-                    const tRefStats = doc(db, "tournaments", tId);
-                    const tSnapStats = await getDoc(tRefStats);
-                    if (tSnapStats.exists()) {
-                        const t = tSnapStats.data() as Tournament;
-                        const updatedTeams = calculateStats(t.teams, allMatches, t.format);
+                    // Use a transaction for atomic update of stats and tournament document to prevent name reversion
+                    await runTransaction(db, async (transaction) => {
+                        const tRefStats = doc(db, "tournaments", tId);
+                        const tSnapStats = await transaction.get(tRefStats);
                         
-                        const statsBatch = writeBatch(db);
-                        statsBatch.update(tRefStats, cleanData({ teams: updatedTeams }));
-                        
-                        const standingsCol = collection(db, "tournaments", tId, "standings");
-                        updatedTeams.forEach(tea => { 
-                             const sRef = doc(standingsCol, tea.id);
-                             if (tea.status === RegistrationStatus.ACCEPTED) {
-                                 statsBatch.set(sRef, cleanData(tea));
-                             } else {
-                                 statsBatch.delete(sRef);
-                             }
-                        });
-                        
-                        await statsBatch.commit();
-                    }
+                        if (tSnapStats.exists()) {
+                            const t = tSnapStats.data() as Tournament;
+                            // Recalculate stats using the LATEST teams from the tournament doc and the updated matches
+                            const updatedTeams = calculateStats(t.teams, updatedMatches, t.format);
+                            
+                            // Update the main tournament doc with new stats
+                            transaction.update(tRefStats, cleanData({ teams: updatedTeams }));
+                            
+                            // Update the standings subcollection
+                            const standingsCol = collection(db, "tournaments", tId, "standings");
+                            updatedTeams.forEach(tea => { 
+                                 const sRef = doc(standingsCol, tea.id);
+                                 if (tea.status === RegistrationStatus.ACCEPTED) {
+                                     transaction.set(sRef, cleanData(tea));
+                                 } else {
+                                     transaction.delete(sRef);
+                                 }
+                            });
+                        }
+                    });
                 } catch (e) {
                     console.error(e);
                 }
@@ -2546,7 +2603,104 @@ export const deleteKnockoutMatchCascade = async (tId: any, mId: any, ...args: an
 export const recalculateMatchResult = async (tId: string, mId: string, sets: any[], adminId: string, adminEmail: string) => {
     if (db) {
         const mRef = doc(db, "tournaments", tId, "matches", mId);
-        await updateDoc(mRef, { score: sets, lastModifiedBy: adminEmail });
+        const globalMatchRef = doc(db, "matches", mId);
+        
+        const p1SetScores = sets.map(s => s.team1);
+        const p2SetScores = sets.map(s => s.team2);
+        const p1Sets = sets.filter(s => s.team1 > s.team2).length;
+        const p2Sets = sets.filter(s => s.team2 > s.team1).length;
+        
+        let winnerId = '';
+        if (p1Sets > p2Sets) {
+            const snap = await getDoc(mRef);
+            winnerId = snap.exists() ? snap.data().team1Id : '';
+        } else if (p2Sets > p1Sets) {
+            const snap = await getDoc(mRef);
+            winnerId = snap.exists() ? snap.data().team2Id : '';
+        }
+
+        const newScore: ScoreState = {
+            p1Points: '0',
+            p2Points: '0',
+            p1Games: 0,
+            p2Games: 0,
+            p1Sets,
+            p2Sets,
+            p1SetScores,
+            p2SetScores,
+            currentSet: sets.length,
+            isTiebreak: false,
+            history: [],
+            sets: sets // Keep as legacy field too just in case
+        };
+
+        const updatePayload = cleanData({ 
+            score: newScore, 
+            winnerTeamId: winnerId || null,
+            lastModifiedBy: adminEmail,
+            status: MatchStatus.COMPLETED
+        });
+
+        await updateDoc(mRef, updatePayload);
+        try {
+            await updateDoc(globalMatchRef, updatePayload);
+        } catch (e) {
+            // might not exist globally
+        }
+
+        // Trigger stats recalculation and bracket advancement
+        try {
+            const matchesSnap = await getDocs(collection(db, "tournaments", tId, "matches"));
+            let allMatches = matchesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Match));
+            
+            const currentMatch = allMatches.find(m => m.id === mId);
+            if (currentMatch) {
+                currentMatch.score = newScore;
+                currentMatch.status = MatchStatus.COMPLETED;
+                currentMatch.winnerTeamId = winnerId;
+                
+                const tRef = doc(db, "tournaments", tId);
+                const tSnap = await getDoc(tRef);
+                const t = tSnap.data() as Tournament;
+                
+                const winnerTeam = (t.teams || []).find((tea: any) => tea.id === winnerId);
+                const winnerName = winnerTeam?.name || (winnerId === currentMatch.team1Id ? currentMatch.team1Name : currentMatch.team2Name) || 'Winner';
+                
+                const updatedMatches = advanceBracket(allMatches, currentMatch, winnerId, winnerName);
+                
+                // Update matches that were changed by advanceBracket
+                const mBatch = writeBatch(db);
+                updatedMatches.forEach(m => {
+                    if (m.id !== mId) {
+                        mBatch.set(doc(db, "tournaments", tId, "matches", m.id), cleanData(m), { merge: true });
+                    }
+                });
+                await mBatch.commit();
+
+                // Atomically update standings and tournament doc
+                await runTransaction(db, async (transaction) => {
+                    const tRefStats = doc(db, "tournaments", tId);
+                    const tSnapStats = await transaction.get(tRefStats);
+                    if (tSnapStats.exists()) {
+                        const tData = tSnapStats.data() as Tournament;
+                        const updatedTeams = calculateStats(tData.teams, updatedMatches, tData.format);
+                        transaction.update(tRefStats, cleanData({ teams: updatedTeams }));
+                        
+                        const standingsCol = collection(db, "tournaments", tId, "standings");
+                        updatedTeams.forEach(tea => {
+                            const sRef = doc(standingsCol, tea.id);
+                            if (tea.status === RegistrationStatus.ACCEPTED) {
+                                transaction.set(sRef, cleanData(tea));
+                            } else {
+                                transaction.delete(sRef);
+                            }
+                        });
+                    }
+                });
+            }
+        } catch (err) {
+            console.error("Standings update failed after score correction", err);
+        }
     }
 };
 
@@ -2586,92 +2740,104 @@ export const replaceTeamInTournament = async (tId: any, oldTeamId: any, newTeam:
 };
 export const editTeamInTournament = async (tId: string, teamId: string, name: string, player1Name: string, player2Name: string) => {
     if (db) {
-        const tRef = doc(db, "tournaments", tId);
-        const tSnap = await getDoc(tRef);
-        if (tSnap.exists()) {
-            const t = tSnap.data() as Tournament;
-            const isAmericanoMode = t.format === 'AMERICANO' || t.format === 'MEXICANO';
-            const updatedTeams = t.teams.map(team => {
-                if (team.id === teamId) {
-                    const updated = JSON.parse(JSON.stringify(team));
-                    updated.name = name;
+        try {
+            await runTransaction(db, async (transaction) => {
+                const tRef = doc(db, "tournaments", tId);
+                const tSnap = await transaction.get(tRef);
+                
+                if (tSnap.exists()) {
+                    const t = tSnap.data() as Tournament;
+                    const isAmericanoMode = t.format === 'AMERICANO' || t.format === 'MEXICANO';
+                    const updatedTeams = t.teams.map(team => {
+                        if (team.id === teamId) {
+                            const updated = JSON.parse(JSON.stringify(team));
+                            updated.name = name;
+                            
+                            if (!updated.player1) updated.player1 = { id: genId(), name: '' };
+                            updated.player1.name = player1Name;
+                            
+                            if (!isAmericanoMode) {
+                                if (!updated.player2) updated.player2 = { id: genId(), name: '' };
+                                if (player2Name !== undefined) updated.player2.name = player2Name;
+                            }
+                            return updated;
+                        }
+                        return team;
+                    });
                     
-                    if (!updated.player1) updated.player1 = { id: genId(), name: '' };
-                    updated.player1.name = player1Name;
+                    transaction.update(tRef, cleanData({ teams: updatedTeams }));
+
+                    const formatPlayerNames = (p1?: string, p2?: string) => {
+                        if (isAmericanoMode) return p1 || '';
+                        return [p1, p2].filter(Boolean).join(' & ');
+                    };
+
+                    // Update match stubs within the tournament
+                    const matchesRef = collection(db, "tournaments", tId, "matches");
+                    const matchesSnap = await getDocs(matchesRef);
+                    matchesSnap.docs.forEach(d => {
+                        const m = d.data();
+                        let needsUpdate = false;
+                        const updatePayload: any = {};
+                        if (m.team1Id === teamId) {
+                            updatePayload.team1Name = name;
+                            updatePayload.team1PlayerNames = formatPlayerNames(player1Name, player2Name);
+                            needsUpdate = true;
+                        }
+                        if (m.team2Id === teamId) {
+                            updatePayload.team2Name = name;
+                            updatePayload.team2PlayerNames = formatPlayerNames(player1Name, player2Name);
+                            needsUpdate = true;
+                        }
+                        if (needsUpdate) {
+                            transaction.update(d.ref, updatePayload);
+                        }
+                    });
                     
-                    if (!isAmericanoMode) {
-                        if (!updated.player2) updated.player2 = { id: genId(), name: '' };
-                        if (player2Name !== undefined) updated.player2.name = player2Name;
+                    // Update standings subcollection too
+                    const sRef = doc(db, "tournaments", tId, "standings", teamId);
+                    const currentTeam = updatedTeams.find(x => x.id === teamId);
+                    if (currentTeam) {
+                        transaction.set(sRef, cleanData(currentTeam), { merge: true });
                     }
-                    return updated;
-                }
-                return team;
-            });
-            await updateDoc(tRef, cleanData({ teams: updatedTeams }));
-
-            const formatPlayerNames = (p1?: string, p2?: string) => {
-                if (isAmericanoMode) return p1 || '';
-                return [p1, p2].filter(Boolean).join(' & ');
-            };
-
-            const matchesRef = collection(db, "tournaments", tId, "matches");
-            const matchesSnap = await getDocs(matchesRef);
-            const batch = writeBatch(db);
-            matchesSnap.docs.forEach(d => {
-                const m = d.data();
-                let needsUpdate = false;
-                const updatePayload: any = {};
-                if (m.team1Id === teamId) {
-                    updatePayload.team1Name = name;
-                    updatePayload.team1PlayerNames = formatPlayerNames(player1Name, player2Name);
-                    needsUpdate = true;
-                }
-                if (m.team2Id === teamId) {
-                    updatePayload.team2Name = name;
-                    updatePayload.team2PlayerNames = formatPlayerNames(player1Name, player2Name);
-                    needsUpdate = true;
-                }
-                if (needsUpdate) {
-                    batch.update(d.ref, updatePayload);
-                    const globalMatchRef = doc(db, "matches", d.id);
-                    batch.update(globalMatchRef, updatePayload);
                 }
             });
-            await batch.commit();
-
-            const standingRef = doc(db, "tournaments", tId, "standings", teamId);
-            await setDoc(standingRef, { name, player1: { name: player1Name }, player2: { name: player2Name } }, { merge: true });
-        }
-    } else {
-        const t = mockTournaments.find(x => x.id === tId);
-        if (t) {
-            const isAmericano = t.format === 'AMERICANO';
-            const formatPlayerNames = (p1?: string, p2?: string) => {
-                if (isAmericano) return p1 || '';
-                return [p1, p2].filter(Boolean).join(' & ');
-            };
-            t.teams = t.teams.map(team => {
-                if (team.id === teamId) {
-                    const updated = { ...team, name };
-                    if (updated.player1) updated.player1.name = player1Name;
-                    if (updated.player2) updated.player2.name = player2Name;
-                    return updated;
-                }
-                return team;
-            });
-            t.matches = t.matches.map(m => {
-                let updated = { ...m };
-                if (m.team1Id === teamId) {
-                    updated.team1Name = name;
-                    updated.team1PlayerNames = formatPlayerNames(player1Name, player2Name);
-                }
-                if (m.team2Id === teamId) {
-                    updated.team2Name = name;
-                    updated.team2PlayerNames = formatPlayerNames(player1Name, player2Name);
-                }
-                return updated;
-            });
-            notifyMock();
+            
+            // Handle global matches separately
+            const tRef = doc(db, "tournaments", tId);
+            const tSnap = await getDoc(tRef);
+            if (tSnap.exists()) {
+                const matchesRef = collection(db, "tournaments", tId, "matches");
+                const matchesSnap = await getDocs(matchesRef);
+                const batch = writeBatch(db);
+                const t = tSnap.data() as Tournament;
+                const isAmericanoMode = t.format === 'AMERICANO' || t.format === 'MEXICANO';
+                const formatPlayerNames = (p1?: string, p2?: string) => {
+                    if (isAmericanoMode) return p1 || '';
+                    return [p1, p2].filter(Boolean).join(' & ');
+                };
+                
+                matchesSnap.docs.forEach(d => {
+                    const m = d.data();
+                    if (m.team1Id === teamId || m.team2Id === teamId) {
+                        const updatePayload: any = {};
+                        if (m.team1Id === teamId) {
+                            updatePayload.team1Name = name;
+                            updatePayload.team1PlayerNames = formatPlayerNames(player1Name, player2Name);
+                        }
+                        if (m.team2Id === teamId) {
+                            updatePayload.team2Name = name;
+                            updatePayload.team2PlayerNames = formatPlayerNames(player1Name, player2Name);
+                        }
+                        const globalMatchRef = doc(db, "matches", d.id);
+                        batch.update(globalMatchRef, updatePayload);
+                    }
+                });
+                await batch.commit();
+            }
+        } catch (e) {
+            console.error("Error updating team in tournament:", e);
+            throw e;
         }
     }
 };
@@ -2684,6 +2850,21 @@ export const getCourtsByVenueIds = async (venueIds: string[]) => {
     const q = query(courtsRef, where("venueId", "in", venueIds));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+export const resumeMatch = async (tId: string, mId: string) => {
+    if (db) {
+        const mRef = doc(db, "tournaments", tId, "matches", mId);
+        const globalMatchRef = doc(db, "matches", mId);
+        const updates = {
+            status: MatchStatus.IN_PROGRESS,
+            winnerTeamId: deleteField()
+        };
+        const batch = writeBatch(db);
+        batch.update(mRef, updates);
+        batch.update(globalMatchRef, updates);
+        await batch.commit();
+    }
 };
 
 export const startMatch = async (tId: any, mId: any, courtId?: string | null, courtName?: string | null, extraData?: any, conflictAcknowledged?: boolean | null) => {

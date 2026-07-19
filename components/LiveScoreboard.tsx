@@ -159,7 +159,7 @@ export const LiveScoreboard: React.FC<{ initialTournamentId?: string, initialCat
 
   useEffect(() => {
     if (activeTournament) {
-        if (activeTournament?.isMultiCategory && activeTournament?.categories && activeTournament.categories.length > 0 && !selectedCategoryId && !initialCategoryId) {
+        if (activeTournament?.categories && activeTournament.categories.length > 0 && !selectedCategoryId && !initialCategoryId) {
             const firstCatId = activeTournament.categories[0].id;
             setSelectedCategoryId(firstCatId);
             const tId = activeTournament.slug || activeTournament.id;
@@ -169,12 +169,12 @@ export const LiveScoreboard: React.FC<{ initialTournamentId?: string, initialCat
   }, [activeTournament, selectedCategoryId]);
 
   useEffect(() => {
-    if (activeTournament && tournamentMatches) {
-        const matchesForCat = activeTournament.isMultiCategory && selectedCategoryId
+    if (activeTournament && tournamentMatches && !loadingMatches) {
+        const matchesForCat = (activeTournament.categories && activeTournament.categories.length > 0) && selectedCategoryId
             ? tournamentMatches.filter((m: any) => m.categoryId === selectedCategoryId)
             : tournamentMatches || [];
         const liveMatchCount = matchesForCat.filter((m: any) => 
-            (m.status === MatchStatus.IN_PROGRESS || String(m.status).toUpperCase() === 'LIVE') && 
+            (m.status === MatchStatus.IN_PROGRESS || String(m.status).toUpperCase() === 'LIVE' || String(m.status).toUpperCase() === 'IN_PROGRESS') && 
             !m.winnerTeamId
         ).length;
         
@@ -187,26 +187,26 @@ export const LiveScoreboard: React.FC<{ initialTournamentId?: string, initialCat
             }
         }
     }
-  }, [activeTournament, tournamentMatches, selectedCategoryId, prevCategory]);
+  }, [activeTournament, tournamentMatches, selectedCategoryId, prevCategory, loadingMatches]);
 
   if (!selectedTournamentId) return <TournamentList tournaments={tournaments} onSelect={handleSelectTournament} />;
   if (loadingTournament) return <div className="text-center p-10 text-gray-500">Loading...</div>;
   if (!activeTournament) return <div className="text-center p-10 text-gray-400">Tournament not found</div>;
 
-  const matchesToDisplay = activeTournament.isMultiCategory && selectedCategoryId
+  const matchesToDisplay = (activeTournament.categories && activeTournament.categories.length > 0) && selectedCategoryId
         ? tournamentMatches.filter((m: any) => m.categoryId === selectedCategoryId)
         : tournamentMatches;
 
-  const teamsToDisplay = activeTournament.isMultiCategory && selectedCategoryId
+  const teamsToDisplay = (activeTournament.categories && activeTournament.categories.length > 0) && selectedCategoryId
         ? (activeTournament.teams || []).filter((t: any) => t.categoryId === selectedCategoryId)
         : (activeTournament.teams || []);
 
   const liveMatches = matchesToDisplay.filter((m: any) => 
-    (m.status === MatchStatus.IN_PROGRESS || String(m.status).toUpperCase() === 'LIVE') && 
+    (m.status === MatchStatus.IN_PROGRESS || String(m.status).toUpperCase() === 'LIVE' || String(m.status).toUpperCase() === 'IN_PROGRESS') && 
     !m.winnerTeamId
   );
   const completedMatches = matchesToDisplay
-    .filter((m: any) => (m.status === MatchStatus.COMPLETED || String(m.status).toUpperCase() === 'FINISHED') || m.winnerTeamId)
+    .filter((m: any) => (m.status === MatchStatus.COMPLETED || String(m.status).toUpperCase() === 'FINISHED' || String(m.status).toUpperCase() === 'COMPLETED') || !!m.winnerTeamId)
     .sort((a: any, b: any) => getMatchTimestamp(b) - getMatchTimestamp(a));
   
   const upcomingMatches = matchesToDisplay
@@ -304,13 +304,13 @@ export const LiveScoreboard: React.FC<{ initialTournamentId?: string, initialCat
              </div>
         </div>
         {/* Category Tabs for Spectator */}
-        {activeTournament.isMultiCategory && activeTournament.categories && activeTournament.categories.length > 0 && (
+        {activeTournament.categories && activeTournament.categories.length > 0 && (
             <div className="max-w-7xl mx-auto px-4 mb-6">
                 <div className="flex flex-wrap items-center justify-start gap-2">
                     {activeTournament.categories.map((cat: any) => {
                         const hasLiveMatch = tournamentMatches?.some((m: any) => 
                             m.categoryId === cat.id && 
-                            (m.status === MatchStatus.IN_PROGRESS || String(m.status).toUpperCase() === 'LIVE') && 
+                            (m.status === MatchStatus.IN_PROGRESS || String(m.status).toUpperCase() === 'LIVE' || String(m.status).toUpperCase() === 'IN_PROGRESS') && 
                             !m.winnerTeamId
                         );
                         return (
@@ -1459,7 +1459,7 @@ const BroadcastMode = ({ tournament, onClose }: { tournament: Tournament, onClos
     const { matches: globalMatches } = useTournamentMatches(tournament.id);
     const [selectedMatchId, setSelectedMatchId] = useState<string | 'ALL'>('ALL');
     const liveMatches = globalMatches.filter(m => 
-        (m.status === MatchStatus.IN_PROGRESS || String(m.status).toUpperCase() === 'LIVE') && 
+        (m.status === MatchStatus.IN_PROGRESS || String(m.status).toUpperCase() === 'LIVE' || String(m.status).toUpperCase() === 'IN_PROGRESS') && 
         !m.winnerTeamId
     );
     
@@ -1962,7 +1962,7 @@ const BroadcastMatchCard = ({ match: initialMatch, teams, compact, categories, t
 const SpectatorResults = ({ matches, teams, tournament }: { matches: Match[]; teams: Team[]; tournament?: any }) => {
     const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
     const [activeStageTab, setActiveStageTab] = useState<'all' | 'knockout' | 'group'>('all');
-    const filteredMatches = matches.filter(m => (m.status === MatchStatus.COMPLETED || String(m.status).toUpperCase() === 'FINISHED') || String(m.status).toUpperCase() === 'COMPLETED');
+    const filteredMatches = matches.filter(m => (m.status === MatchStatus.COMPLETED || String(m.status).toUpperCase() === 'FINISHED' || String(m.status).toUpperCase() === 'COMPLETED') || !!m.winnerTeamId);
 
     const isGroupMatch = (m: Match) => {
         const stage = m.stage?.toUpperCase();
@@ -2333,7 +2333,10 @@ const SpectatorResults = ({ matches, teams, tournament }: { matches: Match[]; te
 
 const SpectatorSchedule = ({ matches, teams, onSelectTab }: { matches: Match[]; teams: Team[]; onSelectTab: (tab: 'live' | 'timelines' | 'standings' | 'results' | 'schedule') => void }) => {
     // Upcoming matches are (status !== 'COMPLETED' && String(status).toUpperCase() !== 'FINISHED')
-    const upcomingMatches = matches.filter(m => (m.status !== MatchStatus.COMPLETED && String(m.status).toUpperCase() !== 'FINISHED') && String(m.status).toUpperCase() !== 'COMPLETED');
+    const upcomingMatches = matches.filter(m => {
+        const isCompleted = (m.status === MatchStatus.COMPLETED || String(m.status).toUpperCase() === 'FINISHED' || String(m.status).toUpperCase() === 'COMPLETED') || !!m.winnerTeamId;
+        return !isCompleted;
+    });
 
     const getTeamName = (teamId: string, fallbackName?: string) => {
         const t = teams.find(team => team.id === teamId);

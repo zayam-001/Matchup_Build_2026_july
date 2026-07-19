@@ -62,11 +62,13 @@ export interface MatchScoringSystemProps {
   onEndMatch?: (winner?: 1 | 2, history?: PointHistory[], extraInfo?: any) => void | Promise<void>;
   onTriggerBroadcast?: (type: string, message: string, subMessage?: string) => void;
   onBack?: () => void;
+  onShowBanner?: () => void;
+  onResumeMatch?: () => void;
   isAmericano?: boolean;
 }
 
 export const MatchScoringSystem: React.FC<MatchScoringSystemProps> = ({
-  score, mode, matchId, tournamentId, matchType, team1Name, team2Name, team1, team2, refereePin, isMatchEnded, onUpdateScore, onEndMatch, onTriggerBroadcast, onBack, isAmericano = false
+  score, mode, matchId, tournamentId, matchType, team1Name, team2Name, team1, team2, refereePin, isMatchEnded, onUpdateScore, onEndMatch, onTriggerBroadcast, onBack, isAmericano = false, onShowBanner, onResumeMatch
 }) => {
   const [americanoTargetPoints, setAmericanoTargetPoints] = useState<number>(() => {
     if (score && (score as any).americanoTargetPoints) return Number((score as any).americanoTargetPoints);
@@ -1264,7 +1266,42 @@ export const MatchScoringSystem: React.FC<MatchScoringSystemProps> = ({
         </AnimatePresence>
         
         {isMatchEnded && (
-           <div className="absolute inset-0 bg-black/50 z-40 pointer-events-none" />
+           <div className="absolute inset-0 bg-black/60 z-40 flex items-center justify-center pointer-events-auto">
+             <div className="flex flex-col gap-4 w-full max-w-xs px-6">
+                <div className="text-center mb-4">
+                  <Trophy className="w-12 h-12 text-brand mx-auto mb-2 opacity-50" />
+                  <h3 className="text-white font-black uppercase text-lg italic tracking-widest">Match Finished</h3>
+                  <p className="text-gray-400 text-xs">This match has been recorded.</p>
+                </div>
+                
+                {onShowBanner && (
+                  <button 
+                    onClick={onShowBanner}
+                    className="w-full py-4 bg-brand text-black font-black uppercase text-sm rounded-xl transition-all shadow-lg shadow-brand/20 hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    View Result Card
+                  </button>
+                )}
+
+                {onResumeMatch && (
+                  <button 
+                    onClick={onResumeMatch}
+                    className="w-full py-4 bg-white/5 border border-white/10 text-white font-black uppercase text-sm rounded-xl hover:bg-white/10 transition-all"
+                  >
+                    Resume Match
+                  </button>
+                )}
+
+                {onBack && (
+                   <button 
+                    onClick={onBack}
+                    className="w-full py-4 text-gray-500 font-bold uppercase text-xs tracking-widest"
+                  >
+                    Back to List
+                  </button>
+                )}
+             </div>
+           </div>
         )}
       </div>
     </div>

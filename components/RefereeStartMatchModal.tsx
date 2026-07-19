@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Match, Tournament } from '../types';
+import { Match, Tournament, MatchStatus } from '../types';
 import { getCourtsByVenueIds } from '../services/storage';
 import { MapPin, Copy, Check } from 'lucide-react';
 
@@ -51,7 +51,11 @@ export function RefereeStartMatchModal({ tournament, match, team1Name, team2Name
 
             const conflicting = (tournament.matches || []).find(other => {
                 if (other.id === match.id) return false;
-                if (other.status !== 'IN_PROGRESS' && other.status !== 'SCHEDULED') return false;
+                const statusStr = String(other.status).toUpperCase();
+                const isLive = statusStr === 'LIVE' || statusStr === 'IN_PROGRESS' || other.status === MatchStatus.IN_PROGRESS;
+                const isScheduled = statusStr === 'SCHEDULED' || other.status === MatchStatus.SCHEDULED || !other.status;
+                
+                if (!isLive && !isScheduled) return false;
 
                 const otherCourtId = other.actualCourtId ?? other.scheduledCourtId ?? other.courtId;
                 const otherCourtName = other.court;
