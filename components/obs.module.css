@@ -48,12 +48,16 @@
 .obsLogoWrap {
   display: flex;
   align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  width: 120px;
+  background: #2563EB;
+  padding: 0 10px;
 }
 
 .obsLogoSvg {
-  width: 42px;
-  height: 42px;
+  width: 80px;
+  height: 80px;
   will-change: filter;
   animation: logoBreathe 5s ease-in-out infinite;
 }
@@ -85,6 +89,11 @@
 /* ── BODY ───────────────────────────────────────────────── */
 .obsBody {
   background: #0c1220;
+  display: flex;
+  align-items: stretch;
+}
+.obsTeams {
+  flex: 1;
 }
 .obsRow {
   display: flex;
@@ -130,7 +139,7 @@
   border-color: #4a7dfa;
 }
 .liveScoreValue {
-  color: #00E5FF; /* Highlight the live score points specially */
+  color: #E65C31; /* Highlight the live score points specially */
   font-weight: bold;
 }
 

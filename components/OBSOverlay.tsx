@@ -184,80 +184,53 @@ export default function OBSOverlay({ matchId, tournamentId }: { matchId: string,
     <div className={styles.obsPage}>
       <div className={styles.obsCard}>
 
-        {/* ── HEADER ─────────────────────────────────────────── */}
-        <div className={styles.obsHdr}>
-          <div className={styles.obsHdrShimmer} />
+        {/* ── TEAMS ──────────────────────────────────────────── */}
+        <div className={styles.obsBody}>
           <div className={styles.obsLogoWrap}>
             <MatchupLogo className={styles.obsLogoSvg} />
           </div>
-          <div className={styles.obsHdrRight}>
-            <span className={styles.obsCourtTxt}>
-              {match.court || 'COURT TBD'}
-            </span>
-            <span className={styles.obsMatchTitle}>
-              {match.roundName || 'MATCH'}
-            </span>
-          </div>
-        </div>
-
-        {/* ── TEAMS ──────────────────────────────────────────── */}
-        <div className={styles.obsBody}>
-          {/* Team 1 */}
-          <div className={styles.obsRow}>
-            <span className={styles.obsTname}>{t1Name}</span>
-            <div className={styles.obsSets}>
-              {mappedSets.map((s, i) => (
-                <div
-                  key={i}
-                  ref={el => { scoreRefs.current[`t1s${i}`] = el; }}
-                  className={`${styles.obsSbox} ${isWinningSet('team1', i) ? styles.win : ''}`}
-                >
-                  {s.team1}
+          <div className={styles.obsTeams}>
+              {/* Team 1 */}
+              <div className={styles.obsRow}>
+                <span className={styles.obsTname}>{t1Name}</span>
+                <div className={styles.obsSets}>
+                  {mappedSets.map((s, i) => (
+                    <div
+                      key={i}
+                      ref={el => { scoreRefs.current[`t1s${i}`] = el; }}
+                      className={`${styles.obsSbox} ${isWinningSet('team1', i) ? styles.win : ''}`}
+                    >
+                      {s.team1}
+                    </div>
+                  ))}
+                  {!isCompleted && (
+                     <div className={`${styles.obsSbox} ${styles.liveScoreValue}`}>
+                        <span ref={points1Ref}>{match.score?.p1Points === '0' ? '0' : match.score?.p1Points}</span>
+                     </div>
+                  )}
                 </div>
-              ))}
-              {!isCompleted && (
-                 <div className={`${styles.obsSbox} ${styles.liveScoreValue}`}>
-                    <span ref={points1Ref}>{match.score?.p1Points === '0' ? '0' : match.score?.p1Points}</span>
-                 </div>
-              )}
-            </div>
-          </div>
-          {/* Team 2 */}
-          <div className={styles.obsRow}>
-            <span className={styles.obsTname}>{t2Name}</span>
-            <div className={styles.obsSets}>
-              {mappedSets.map((s, i) => (
-                <div
-                  key={i}
-                  ref={el => { scoreRefs.current[`t2s${i}`] = el; }}
-                  className={`${styles.obsSbox} ${isWinningSet('team2', i) ? styles.win : ''}`}
-                >
-                  {s.team2}
+              </div>
+              {/* Team 2 */}
+              <div className={styles.obsRow}>
+                <span className={styles.obsTname}>{t2Name}</span>
+                <div className={styles.obsSets}>
+                  {mappedSets.map((s, i) => (
+                    <div
+                      key={i}
+                      ref={el => { scoreRefs.current[`t2s${i}`] = el; }}
+                      className={`${styles.obsSbox} ${isWinningSet('team2', i) ? styles.win : ''}`}
+                    >
+                      {s.team2}
+                    </div>
+                  ))}
+                   {!isCompleted && (
+                     <div className={`${styles.obsSbox} ${styles.liveScoreValue}`}>
+                        <span ref={points2Ref}>{match.score?.p2Points === '0' ? '0' : match.score?.p2Points}</span>
+                     </div>
+                  )}
                 </div>
-              ))}
-               {!isCompleted && (
-                 <div className={`${styles.obsSbox} ${styles.liveScoreValue}`}>
-                    <span ref={points2Ref}>{match.score?.p2Points === '0' ? '0' : match.score?.p2Points}</span>
-                 </div>
-              )}
-            </div>
+              </div>
           </div>
-        </div>
-
-        {/* ── FOOTER ─────────────────────────────────────────── */}
-        <div className={styles.obsFoot}>
-          {!isCompleted ? (
-              <div className={styles.obsLive}>
-                <div className={styles.liveDot} />
-                <span className={styles.liveTxt}>LIVE</span>
-              </div>
-          ) : (
-              <div className={styles.obsLive} style={{ animation: 'none' }}>
-                <span className={styles.liveTxt} style={{ color: '#fff' }}>FINAL</span>
-              </div>
-          )}
-          
-          <span className={styles.obsFootInfo}>matchup.com.pk</span>
         </div>
 
         {/* ── STING LAYER ────────────────────────────────────── */}
