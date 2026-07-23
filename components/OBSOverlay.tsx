@@ -15,6 +15,7 @@ export default function OBSOverlay({ matchId, tournamentId }: { matchId: string,
   const stingBodyRef   = useRef<HTMLDivElement>(null);
   const stingLine1Ref  = useRef<HTMLSpanElement>(null);
   const stingLine2Ref  = useRef<HTMLSpanElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   // Score change detection
   const prevSetsRef    = useRef<Array<{ team1: number; team2: number; p1Pts: string; p2Pts: string; }>>([]);
@@ -69,6 +70,16 @@ export default function OBSOverlay({ matchId, tournamentId }: { matchId: string,
           team2: match?.score?.p2Games || 0,
       });
   }
+
+  useEffect(() => {
+    if (!cardRef.current || !match) return;
+    if (match.status !== MatchStatus.SCHEDULED) {
+      gsap.fromTo(cardRef.current, 
+        { y: 50, opacity: 0, scale: 0.95 }, 
+        { y: 0, opacity: 1, scale: 1, duration: 0.8, ease: "back.out(1.2)" }
+      );
+    }
+  }, [match?.status]);
 
   // ── Score change animation ───────────────────────────────────────
   useEffect(() => {
@@ -182,7 +193,7 @@ export default function OBSOverlay({ matchId, tournamentId }: { matchId: string,
 
   return (
     <div className={styles.obsPage}>
-      <div className={styles.obsCard}>
+      <div className={styles.obsCard} ref={cardRef}>
 
         {/* ── TEAMS ──────────────────────────────────────────── */}
         <div className={styles.obsBody}>

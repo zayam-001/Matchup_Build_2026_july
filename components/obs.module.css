@@ -53,6 +53,11 @@
   width: 120px;
   background: #2563EB;
   padding: 0 10px;
+  animation: wrapPulse 3s ease-in-out infinite;
+}
+@keyframes wrapPulse {
+  0%, 100% { background: #2563EB; }
+  50% { background: #1D4ED8; }
 }
 
 .obsLogoSvg {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ScoreState, Team } from '../types';
 import { RotateCcw, ChevronLeft, Crown, AlertCircle, X, Plus, Target, Trophy, Clock, Lock, Loader2, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -138,6 +138,7 @@ export const MatchScoringSystem: React.FC<MatchScoringSystemProps> = ({
   };
 
   const [matchState, setMatchState] = useState<MatchState>(INITIAL_STATE);
+  const isLocalUpdateRef = useRef(false);
 
   useEffect(() => {
     if (score && !isMatchEnded) {
@@ -147,20 +148,25 @@ export const MatchScoringSystem: React.FC<MatchScoringSystemProps> = ({
         const externalPointsA = parseInt(score.p1Points || '0');
         const externalPointsB = parseInt(score.p2Points || '0');
         
+        // We only trigger this if the incoming score explicitly differs from our local prev state, 
+        // AND the incoming score's property actually exists. We must also ignore cases where the difference
+        // is just the external DB being lagging behind our fast local updates.
+        // Actually, since we only want to sync external updates (like an admin changing score),
+        // we should compare if the difference is substantial.
         if (
-          score.p1Sets !== prev.setsA || 
-          score.p2Sets !== prev.setsB || 
-          score.p1Games !== prev.gamesA || 
-          score.p2Games !== prev.gamesB
+          (score.p1Sets !== undefined && score.p1Sets !== prev.setsA && !isLocalUpdateRef.current) || 
+          (score.p2Sets !== undefined && score.p2Sets !== prev.setsB && !isLocalUpdateRef.current) || 
+          (score.p1Games !== undefined && score.p1Games !== prev.gamesA && !isLocalUpdateRef.current) || 
+          (score.p2Games !== undefined && score.p2Games !== prev.gamesB && !isLocalUpdateRef.current)
         ) {
           return {
             server: (score.server as PlayerId) || 'p1',
             pointsA: isAmericano ? externalPointsA : (score.rawPointsA ?? prev.pointsA),
             pointsB: isAmericano ? externalPointsB : (score.rawPointsB ?? prev.pointsB),
-            gamesA: score.p1Games || 0,
-            gamesB: score.p2Games || 0,
-            setsA: score.p1Sets || 0,
-            setsB: score.p2Sets || 0,
+            gamesA: score.p1Games ?? 0,
+            gamesB: score.p2Games ?? 0,
+            setsA: score.p1Sets ?? 0,
+            setsB: score.p2Sets ?? 0,
             goldenPoint: score.goldenPoint || false,
             isTiebreak: score.isTiebreak || false,
             setScoresA: score.p1SetScores || [],
@@ -228,8 +234,9 @@ export const MatchScoringSystem: React.FC<MatchScoringSystemProps> = ({
     };
 
     // Do not dispatch intermediate score updates if we are in the process of submitting the final end match
-    if (!isSubmittingEndMatch && !isMatchEnded) {
+    if (!isSubmittingEndMatch && !isMatchEnded && isLocalUpdateRef.current) {
         onUpdateScore(nextScoreState);
+        isLocalUpdateRef.current = false;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchState, isAmericano, americanoTargetPoints, americanoMode]); // intentionally omitting score and onUpdateScore
@@ -275,14 +282,14 @@ export const MatchScoringSystem: React.FC<MatchScoringSystemProps> = ({
 
   const handleSetServer = (playerId: PlayerId, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    setMatchState(prev => ({ ...prev, server: playerId }));
+    isLocalUpdateRef.current = true; setMatchState(prev => ({ ...prev, server: playerId }));
   };
 
   const handleUndo = () => {
     if (history.length === 0) return;
     const lastHistory = history[history.length - 1];
     if (lastHistory.stateBefore && Object.keys(lastHistory.stateBefore).length > 0) {
-        setMatchState(lastHistory.stateBefore);
+        isLocalUpdateRef.current = true; setMatchState(lastHistory.stateBefore);
         setHistory(prev => prev.slice(0, -1));
         
         // Revert the last atomic point in the database (e.g. player stats)
@@ -336,6 +343,7 @@ export const MatchScoringSystem: React.FC<MatchScoringSystemProps> = ({
       const newHistoryEvent = { stateBefore: matchState, timestamp: Date.now(), action: actionDetails };
       const newHistory = [...history, newHistoryEvent as any];
       setHistory(newHistory);
+      isLocalUpdateRef.current = true;
       setMatchState(nextState);
 
       // Check ending condition
@@ -387,6 +395,7 @@ export const MatchScoringSystem: React.FC<MatchScoringSystemProps> = ({
     const newHistoryEvent = { stateBefore: matchState, timestamp: Date.now(), action: actionDetails };
     const newHistory = [...history, newHistoryEvent as any];
     setHistory(newHistory);
+    isLocalUpdateRef.current = true;
     setMatchState(nextState);
   };
 
@@ -410,15 +419,20 @@ export const MatchScoringSystem: React.FC<MatchScoringSystemProps> = ({
     nextState.server = null;
     nextState.isTiebreak = isTiebreakForNext;
 
+    isLocalUpdateRef.current = true;
     setMatchState(nextState);
     setHistory(prev => [...prev, { stateBefore: matchState, timestamp: Date.now(), action: { teamToAward: pendingSetResult.team, type: 'point' } } as any, ...(startNext ? [{ stateBefore: nextState, timestamp: Date.now() + 1, action: { type: 'START_SET_NORMAL' } } as any] : [])]);
     setPendingSetResult(null);
 
-    if (startNext) {
-      setWorkflowPhase('SCORING');
-    } else {
-      setWorkflowPhase('WINNER_SELECTION');
-    }
+    // Give it a tiny tick for the state to settle before resetting the UI to scoring,
+    // which prevents rapid re-renders from fighting with the external sync.
+    setTimeout(() => {
+        if (startNext) {
+          setWorkflowPhase('SCORING');
+        } else {
+          setWorkflowPhase('WINNER_SELECTION');
+        }
+    }, 50);
   };
 
   const handleQuickPoint = (playerId: PlayerId) => {
@@ -639,7 +653,7 @@ export const MatchScoringSystem: React.FC<MatchScoringSystemProps> = ({
               <div className="flex gap-1.5 w-full max-w-[180px]">
                   <button 
                     type="button"
-                    onClick={() => setMatchState(prev => ({ ...prev, goldenPoint: !prev.goldenPoint }))} 
+                    onClick={() => { isLocalUpdateRef.current = true; setMatchState(prev => ({ ...prev, goldenPoint: !prev.goldenPoint })); }} 
                     className={`flex items-center gap-1 bg-[#1A1A1A] px-2.5 py-1.5 rounded-lg border transition-all duration-300 flex-1 justify-center ${
                       matchState.goldenPoint 
                         ? 'bg-gradient-to-r from-amber-500/20 to-[#E65C31]/20 border-[#E65C31] text-[#E65C31] shadow-[0_0_12px_rgba(230,92,49,0.25)] animate-pulse' 
@@ -652,7 +666,7 @@ export const MatchScoringSystem: React.FC<MatchScoringSystemProps> = ({
                   
                   <button 
                     type="button"
-                    onClick={() => setMatchState(prev => ({ ...prev, isTiebreak: !prev.isTiebreak }))} 
+                    onClick={() => { isLocalUpdateRef.current = true; setMatchState(prev => ({ ...prev, isTiebreak: !prev.isTiebreak })); }} 
                     className={`flex items-center gap-1 bg-[#1A1A1A] px-2.5 py-1.5 rounded-lg border transition-all duration-300 flex-1 justify-center ${
                       matchState.isTiebreak 
                         ? 'bg-gradient-to-r from-blue-500/20 to-[#4D78FF]/20 border-[#4D78FF] text-[#4D78FF] shadow-[0_0_12px_rgba(77,120,255,0.25)]' 
@@ -1224,6 +1238,7 @@ export const MatchScoringSystem: React.FC<MatchScoringSystemProps> = ({
                             }
                         }
 
+                        isLocalUpdateRef.current = true;
                         setMatchState(finalState);
                         setIsSubmittingEndMatch(true);
                         

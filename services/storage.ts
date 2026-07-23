@@ -2360,8 +2360,8 @@ export const updateMatchDetails = async (tId: any, mId: any, updates: any, ...ar
         
         try {
            const batch = writeBatch(db);
-           batch.update(mRef, cleanData(updates));
-           batch.update(globalMatchRef, cleanData(updates));
+           batch.set(mRef, cleanData(updates), { merge: true });
+           batch.set(globalMatchRef, cleanData({ ...updates, tournamentId: tId, id: mId }), { merge: true });
            await batch.commit();
         } catch(e) {
            // Fallback if the global match document doesn't exist for some reason
@@ -2422,8 +2422,8 @@ export const updateMatchScore = async (tId: string, mId: string, newScore: Score
         // 1. Update the match score directly (Fast)
         try {
            const batch = writeBatch(db);
-           batch.update(mRef, updatePayload);
-           batch.update(globalMatchRef, updatePayload);
+           batch.set(mRef, updatePayload, { merge: true });
+           batch.set(globalMatchRef, { ...updatePayload, tournamentId: tId, id: mId }, { merge: true });
            await batch.commit();
         } catch(e) {
            await setDoc(mRef, updatePayload, { merge: true });
@@ -2436,6 +2436,7 @@ export const updateMatchScore = async (tId: string, mId: string, newScore: Score
                 try {
                     const matchesSnap = await getDocs(collection(db, "tournaments", tId, "matches"));
                     let allMatches = matchesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Match));
+                    let updatedMatches = allMatches;
                     const match = allMatches.find(m => m.id === mId);
                     
                     if (match) {
@@ -2443,7 +2444,7 @@ export const updateMatchScore = async (tId: string, mId: string, newScore: Score
                         match.score = newScore;
                         match.winnerTeamId = winnerId;
                         const winnerName = winnerId === match.team1Id ? match.team1Name : (winnerId === match.team2Id ? match.team2Name : "TBD");
-                        const updatedMatches = advanceBracket(allMatches, match, winnerId, winnerName || "TBD");
+                        updatedMatches = advanceBracket(allMatches, match, winnerId, winnerName || "TBD");
                         
                         const batch = writeBatch(db);
                         updatedMatches.forEach(m => {
@@ -2631,7 +2632,7 @@ export const recalculateMatchResult = async (tId: string, mId: string, sets: any
             currentSet: sets.length,
             isTiebreak: false,
             history: [],
-            sets: sets // Keep as legacy field too just in case
+            
         };
 
         const updatePayload = cleanData({ 
@@ -2830,7 +2831,7 @@ export const editTeamInTournament = async (tId: string, teamId: string, name: st
                             updatePayload.team2PlayerNames = formatPlayerNames(player1Name, player2Name);
                         }
                         const globalMatchRef = doc(db, "matches", d.id);
-                        batch.update(globalMatchRef, updatePayload);
+                        batch.set(globalMatchRef, { ...updatePayload, tournamentId: tId, id: d.id }, { merge: true });
                     }
                 });
                 await batch.commit();
@@ -2861,8 +2862,8 @@ export const resumeMatch = async (tId: string, mId: string) => {
             winnerTeamId: deleteField()
         };
         const batch = writeBatch(db);
-        batch.update(mRef, updates);
-        batch.update(globalMatchRef, updates);
+        batch.set(mRef, updates, { merge: true });
+        batch.set(globalMatchRef, { ...updates, tournamentId: tId, id: mId }, { merge: true });
         await batch.commit();
     }
 };
@@ -2884,8 +2885,8 @@ export const startMatch = async (tId: any, mId: any, courtId?: string | null, co
             const mRef = doc(db, "tournaments", tId, "matches", mId);
             const globalMatchRef = doc(db, "matches", mId);
             
-            batch.update(mRef, updates);
-            batch.update(globalMatchRef, updates);
+            batch.set(mRef, updates, { merge: true });
+            batch.set(globalMatchRef, { ...updates, tournamentId: tId, id: mId }, { merge: true });
             
             await batch.commit();
         } catch (e) {
